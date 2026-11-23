@@ -1,0 +1,314 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String        @id @default(cuid())
+  name                  String
+  email                 String        @unique
+  emailVerified         DateTime?
+  image                 String?
+  phone                 String?       @unique
+  phoneVerified         DateTime?
+  passwordHash          String?
+  phoneType             String?       // نوع وموديل الهاتف المسجل به (e.g. iPhone 15, Samsung A54, Xiaomi)
+  initialEmail          String?       // الجيميل الأصلي المسجل أول مرة للمقارنة والحماية
+  initialPhone          String?       // الهاتف الأصلي المسجل
+  initialFingerprint    String?       // بصمة الجهاز الأصلية
+  role                  String        @default("STUDENT") // STUDENT, ADMIN
+  status                String        @default("ACTIVE") // ACTIVE, PENDING_VERIFICATION, LOCKED, SUSPENDED
+  
+  academicLevelId       String?
+  academicLevel         AcademicLevel? @relation(fields: [academicLevelId], references: [id])
+  canChangeLevel        Boolean       @default(false)
+
+  maxAllowedDevices     Int           @default(1)
+  devices               DeviceSession[]
+  
+  purchases             Purchase[]
+  videoProgress         VideoProgress[]
+  examAttempts          ExamAttempt[]
+  notifications         Notification[]
+  auditLogs             AuditLog[]     @relation("UserAudits")
+  resolvedAudits        AuditLog[]     @relation("AdminResolutions")
+
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  @@index([phone])
+  @@index([email])
+  @@index([status])
+}
+
+model DeviceSession {
+  id                 String    @id @default(cuid())
+  userId             String
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceFingerprint  String
+  deviceName         String?
+  deviceModel        String?   // نوع وموديل الجهاز (e.g. iPhone 15 Pro, Samsung Galaxy A54)
+  ipAddress          String
+  userAgent          String
+  isApproved         Boolean   @default(true)
+  lastActiveAt       DateTime  @default(now())
+  createdAt          DateTime  @default(now())
+
+  @@unique([userId, deviceFingerprint])
+  @@index([deviceFingerprint])
+}
+
+model OtpVerification {
+  id         String    @id @default(cuid())
+  phone      String
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  isVerified Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+
+  @@index([phone])
+}
+
+model AuditLog {
+  id                   String       @id @default(cuid())
+  userId               String?
+  user                 User?        @relation("UserAudits", fields: [userId], references: [id])
+  action               String
+  attemptedEmail       String?
+  attemptedPhone       String?
+  attemptedFingerprint String?
+  attemptedDeviceModel String?      // نوع الفون المستخدم في المحاولة المشبوهة
+  ipAddress            String
+  userAgent            String
+  reason               String
+  adminNotes           String?
+  resolvedByUserId     String?
+  resolvedBy           User?        @relation("AdminResolutions", fields: [resolvedByUserId], references: [id])
+  resolvedAt           DateTime?
+  createdAt            DateTime     @default(now())
+
+  @@index([userId])
+  @@index([action])
+}
+
+model AcademicLevel {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  order       Int       @default(0)
+  subjects    Subject[]
+  users       User[]
+  createdAt   DateTime  @default(now())
+}
+
+model Subject {
+  id              String         @id @default(cuid())
+  name            String
+  code            String?
+  description     String?
+  imageUrl        String?
+  price           Float          @default(50.0)
+  academicLevelId String
+  academicLevel   AcademicLevel  @relation(fields: [academicLevelId], references: [id])
+  term            Int
+  order           Int            @default(0)
+  isActive        Boolean        @default(true)
+
+  lessons         Lesson[]
+  questions       Question[]
+  exams           Exam[]
+  purchases       Purchase[]
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([academicLevelId, term])
+}
+
+model Lesson {
+  id          String    @id @default(cuid())
+  subjectId   String
+  subject     Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  order       Int       @default(0)
+  publishAt   DateTime?
+  isPublished Boolean   @default(false)
+
+  videos      Video[]
+  files       File[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([subjectId])
+}
+
+model Video {
+  id               String          @id @default(cuid())
+  lessonId         String
+  lesson           Lesson          @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  title            String
+  provider         String          @default("BUNNY")
+  videoId          String
+  durationSeconds  Int             @default(0)
+  thumbnailUrl     String?
+  order            Int             @default(0)
+  isPreviewFree    Boolean         @default(false)
+  progressRecords  VideoProgress[]
+
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+}
+
+model File {
+  id            String    @id @default(cuid())
+  lessonId      String
+  lesson        Lesson    @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  title         String
+  s3Key         String
+  fileSize      Int       @default(0)
+  fileType      String    @default("application/pdf")
+  order         Int       @default(0)
+  isPreviewFree Boolean   @default(false)
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model VideoProgress {
+  id                  String   @id @default(cuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  videoId             String
+  video               Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  lastPositionSeconds Int      @default(0)
+  maxPositionSeconds  Int      @default(0)
+  isCompleted         Boolean  @default(false)
+  updatedAt           DateTime @updatedAt
+
+  @@unique([userId, videoId])
+}
+
+model Question {
+  id            String   @id @default(cuid())
+  subjectId     String
+  subject       Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  type          String   @default("MCQ") // MCQ, TRUE_FALSE, ESSAY
+  text          String
+  imageUrl      String?
+  options       Json
+  correctAnswer String
+  points        Float    @default(1.0)
+  explanation   String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([subjectId])
+}
+
+model Exam {
+  id                   String            @id @default(cuid())
+  subjectId            String
+  subject              Subject           @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  title                String
+  description          String?
+  durationMinutes      Int
+  totalMarks           Float
+  passMarks            Float
+  questionsToSelect    Int
+  
+  windowStartTime      DateTime
+  windowEndTime        DateTime
+  
+  showAnswersPolicy    String            @default("NEVER")
+  isPublished          Boolean           @default(false)
+
+  attempts             ExamAttempt[]
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  @@index([subjectId])
+}
+
+model ExamAttempt {
+  id                String            @id @default(cuid())
+  examId            String
+  exam              Exam              @relation(fields: [examId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  seed              Int
+  assignedQuestions Json
+  submittedAnswers  Json?
+  
+  score             Float?
+  isPassed          Boolean?
+  
+  status            String            @default("IN_PROGRESS") // IN_PROGRESS, SUBMITTED, TIMED_OUT, CANCELLED
+  tabSwitchCount    Int               @default(0)
+  
+  startedAt         DateTime          @default(now())
+  serverDueTime     DateTime
+  submittedAt       DateTime?
+  
+  ipAddress         String?
+  userAgent         String?
+
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@unique([examId, userId])
+  @@index([userId])
+}
+
+model Purchase {
+  id             String         @id @default(cuid())
+  userId         String
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjectId      String
+  subject        Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  amount         Float
+  currency       String         @default("EGP")
+  
+  status         String         @default("PENDING") // PENDING, COMPLETED, FAILED, REFUNDED
+  paymentMethod  String         // CARD, WALLET, INSTAPAY, MANUAL_GRANT
+  paymentGateway String         @default("PAYMOB")
+  
+  gatewayOrderId String?
+  transactionId  String?        @unique
+  rawCallback    Json?
+  
+  couponCode     String?
+  adminNotes     String?
+
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([userId, subjectId])
+  @@index([status])
+}
+
+model Notification {
+  id          String              @id @default(cuid())
+  userId      String
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel     String              @default("WHATSAPP") // WHATSAPP, SMS, IN_APP, EMAIL
+  type        String
+  title       String
+  body        String
+  status      String              @default("PENDING") // PENDING, SENT, FAILED
+  errorReason String?
+  retryCount  Int                 @default(0)
+  sentAt      DateTime?
+  createdAt   DateTime            @default(now())
+
+  @@index([userId])
+  @@index([status])
+}
