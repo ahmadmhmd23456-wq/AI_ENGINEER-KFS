@@ -94,15 +94,25 @@ export default function SecureVideoPlayer({
       onContextMenu={handleContextMenu}
       className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-slate-800 select-none group"
     >
-      {/* مشغل الفيديو الآمن (Iframe / HLS Player من Bunny Stream) */}
+      {/* مشغل الفيديو الآمن (يدعم يوتيوب، Bunny Stream، Google Drive، أو روابط مباشرة) */}
       {signedUrl && (
-        <iframe
-          src={signedUrl}
-          loading="lazy"
-          className="w-full h-full border-0 absolute inset-0 pointer-events-auto"
-          allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
-          allowFullScreen={true}
-        />
+        signedUrl.match(/\.(mp4|webm|ogg)(\?.*)?$/i) ? (
+          <video
+            src={signedUrl}
+            controls
+            controlsList="nodownload"
+            className="w-full h-full object-contain absolute inset-0 pointer-events-auto"
+            autoPlay
+          />
+        ) : (
+          <iframe
+            src={signedUrl}
+            loading="lazy"
+            className="w-full h-full border-0 absolute inset-0 pointer-events-auto"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen={true}
+          />
+        )
       )}
 
       {/* العلامة المائية المتحركة الشفافة (Dynamic Floating Watermark) */}

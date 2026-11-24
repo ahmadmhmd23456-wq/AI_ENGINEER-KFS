@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-guard";
+import { detectVideoProvider } from "@/lib/video-helper";
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,18 +29,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, lesson });
     }
 
-    // 2. ربط فيديو بحصة معينة (Bunny Stream)
+    // 2. ربط فيديو بحصة معينة (YouTube, Bunny Stream, Google Drive, Direct)
     if (action === "ADD_VIDEO") {
       if (!lessonId || !videoData?.videoId || !videoData?.title) {
         return NextResponse.json({ error: "بيانات الفيديو ناقصة" }, { status: 400 });
       }
 
+      const detected = detectVideoProvider(videoData.videoId, videoData.provider || "YOUTUBE");
+
       const video = await prisma.video.create({
         data: {
           lessonId,
           title: videoData.title,
-          videoId: videoData.videoId,
-          provider: videoData.provider || "BUNNY",
+          videoId: detected.videoId,
+          provider: detected.provider,
           durationSeconds: videoData.durationSeconds ? parseInt(videoData.durationSeconds) : 3600,
           isPreviewFree: videoData.isPreviewFree || false,
         },

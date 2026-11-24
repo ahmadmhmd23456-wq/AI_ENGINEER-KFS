@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Clock,
   CheckCircle,
+  Video,
 } from "lucide-react";
 
 export default function AdminDashboardPage() {
@@ -73,8 +74,8 @@ export default function AdminDashboardPage() {
             onClick={() => router.push("/admin/subjects")}
             className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-lg shadow-blue-600/20"
           >
-            <BookOpen className="w-4 h-4" />
-            <span>إدارة المواد والمحتوى</span>
+            <Video className="w-4 h-4" />
+            <span>رفع وإدارة الفيديوهات والمواد</span>
           </button>
         </div>
       </div>

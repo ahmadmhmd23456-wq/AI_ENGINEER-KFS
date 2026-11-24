@@ -450,10 +450,10 @@ export default function AdminSubjectsPage() {
               <div className="flex items-center justify-end gap-2 pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-800/80 flex-shrink-0">
                 <button
                   onClick={() => router.push(`/admin/subjects/${subject.id}/content`)}
-                  className="py-2 px-3.5 bg-blue-600/15 hover:bg-blue-600 text-blue-300 hover:text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all"
+                  className="py-2 px-3.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-sm"
                 >
                   <Video className="w-3.5 h-3.5" />
-                  <span>إدارة المحتوى</span>
+                  <span>رفع وإدارة الفيديوهات</span>
                 </button>
 
                 <button

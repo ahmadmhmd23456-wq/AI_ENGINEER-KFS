@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { generateBunnySignedUrl } from "@/lib/bunny";
+import { generateVideoEmbedUrl } from "@/lib/video-helper";
 
 export async function POST(req: NextRequest) {
   try {
@@ -68,12 +69,13 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // توليد رابط التوقيع الآمن من Bunny Stream
-    const signedUrl = generateBunnySignedUrl(video.videoId, 7200);
+    // توليد رابط التشغيل الآمن (سواء كان يوتيوب، درايف، أو Bunny Stream)
+    const signedUrl = generateVideoEmbedUrl(video.provider, video.videoId);
 
     return NextResponse.json({
       success: true,
       signedUrl,
+      provider: video.provider,
       lastPositionSeconds: progress?.lastPositionSeconds || 0,
       duration: video.durationSeconds,
     });

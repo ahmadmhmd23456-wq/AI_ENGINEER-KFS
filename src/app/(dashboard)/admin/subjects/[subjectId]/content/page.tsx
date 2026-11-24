@@ -15,7 +15,11 @@ import {
   Play,
   UploadCloud,
   RefreshCw,
+  Sparkles,
+  ExternalLink,
+  ShieldCheck,
 } from "lucide-react";
+import { extractYoutubeId } from "@/lib/video-helper";
 
 export default function AdminSubjectContentPage({
   params,
@@ -38,8 +42,10 @@ export default function AdminSubjectContentPage({
   // مودال إضافة فيديو
   const [activeLessonForVideo, setActiveLessonForVideo] = useState<string | null>(null);
   const [videoTitle, setVideoTitle] = useState("");
-  const [bunnyVideoId, setBunnyVideoId] = useState("");
+  const [videoProvider, setVideoProvider] = useState<"YOUTUBE" | "BUNNY" | "DIRECT" | "GOOGLE_DRIVE">("YOUTUBE");
+  const [videoUrlOrId, setVideoUrlOrId] = useState("");
   const [videoDuration, setVideoDuration] = useState("60");
+  const [isPreviewFree, setIsPreviewFree] = useState(false);
 
   // مودال إضافة ملف PDF
   const [activeLessonForFile, setActiveLessonForFile] = useState<string | null>(null);
@@ -91,7 +97,7 @@ export default function AdminSubjectContentPage({
 
   const handleAddVideo = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeLessonForVideo) return;
+    if (!activeLessonForVideo || !videoUrlOrId.trim()) return;
     try {
       const res = await fetch("/api/admin/lessons", {
         method: "POST",
@@ -101,8 +107,10 @@ export default function AdminSubjectContentPage({
           lessonId: activeLessonForVideo,
           videoData: {
             title: videoTitle,
-            videoId: bunnyVideoId,
-            durationSeconds: parseInt(videoDuration) * 60,
+            videoId: videoUrlOrId.trim(),
+            provider: videoProvider,
+            durationSeconds: (parseInt(videoDuration) || 60) * 60,
+            isPreviewFree,
           },
         }),
       });
@@ -110,11 +118,16 @@ export default function AdminSubjectContentPage({
       if (res.ok) {
         setActiveLessonForVideo(null);
         setVideoTitle("");
-        setBunnyVideoId("");
+        setVideoUrlOrId("");
+        setVideoDuration("60");
+        setIsPreviewFree(false);
         fetchContent();
+      } else {
+        const data = await res.json();
+        alert(data.error || "حدث خطأ أثناء حفظ الفيديو");
       }
     } catch {
-      alert("حدث خطأ");
+      alert("حدث خطأ في الاتصال");
     }
   };
 
@@ -255,13 +268,39 @@ export default function AdminSubjectContentPage({
                         key={vid.id}
                         className="p-3 bg-slate-950/60 border border-slate-800 rounded-2xl flex items-center justify-between text-xs"
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2.5">
                           <Play className="w-4 h-4 text-blue-400 flex-shrink-0" />
                           <div>
                             <span className="font-bold text-white block">{vid.title}</span>
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              Bunny ID: {vid.videoId} • {Math.floor(vid.durationSeconds / 60)} دقيقة
-                            </span>
+                            <div className="flex items-center gap-1.5 mt-1 text-[10px]">
+                              <span
+                                className={`px-2 py-0.5 rounded-md font-bold ${
+                                  vid.provider === "YOUTUBE"
+                                    ? "bg-red-500/15 text-red-400 border border-red-500/30"
+                                    : vid.provider === "GOOGLE_DRIVE"
+                                    ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                                    : vid.provider === "DIRECT"
+                                    ? "bg-purple-500/15 text-purple-400 border border-purple-500/30"
+                                    : "bg-blue-500/15 text-blue-400 border border-blue-500/30"
+                                }`}
+                              >
+                                {vid.provider === "YOUTUBE"
+                                  ? "🔴 يوتيوب"
+                                  : vid.provider === "GOOGLE_DRIVE"
+                                  ? "📁 درايف"
+                                  : vid.provider === "DIRECT"
+                                  ? "🔗 مباشر"
+                                  : "🐰 Bunny"}
+                              </span>
+                              {vid.isPreviewFree && (
+                                <span className="px-2 py-0.5 rounded-md font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                  معاينة مجانية
+                                </span>
+                              )}
+                              <span className="text-slate-400 font-mono">
+                                {Math.floor((vid.durationSeconds || 0) / 60)} دقيقة
+                              </span>
+                            </div>
                           </div>
                         </div>
 
@@ -388,73 +427,225 @@ export default function AdminSubjectContentPage({
         </div>
       )}
 
-      {/* مودال ربط فيديو Bunny */}
-      {activeLessonForVideo && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative">
-            <button
-              onClick={() => setActiveLessonForVideo(null)}
-              className="absolute top-5 left-5 text-slate-400 hover:text-white"
-            >
-              <X className="w-5 h-5" />
-            </button>
+      {/* مودال ربط فيديو (يوتيوب مجاني، Bunny Stream، Google Drive، أو مباشر) */}
+      {activeLessonForVideo && (() => {
+        const detectedYtId = videoProvider === "YOUTUBE" ? extractYoutubeId(videoUrlOrId) : null;
+        return (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl relative max-h-[92vh] overflow-y-auto">
+              <button
+                onClick={() => {
+                  setActiveLessonForVideo(null);
+                  setVideoTitle("");
+                  setVideoUrlOrId("");
+                  setIsPreviewFree(false);
+                }}
+                className="absolute top-5 left-5 text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
 
-            <h3 className="text-base font-bold text-white mb-4">إرفاق فيديو من Bunny Stream</h3>
-
-            <form onSubmit={handleAddVideo} className="space-y-4 text-xs">
-              <div>
-                <label className="block text-slate-300 font-medium mb-1">عنوان الفيديو:</label>
-                <input
-                  type="text"
-                  required
-                  value={videoTitle}
-                  onChange={(e) => setVideoTitle(e.target.value)}
-                  placeholder="فيديو الشرح عالي الجودة"
-                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-blue-500"
-                />
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-2xl bg-blue-600/15 border border-blue-500/30 flex items-center justify-center text-blue-400">
+                  <Video className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">إرفاق فيديو للمحاضرة</h3>
+                  <p className="text-[11px] text-slate-400">اختر طريقة رفع أو ربط الفيديو المناسبة لك</p>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-slate-300 font-medium mb-1">Bunny Video ID (معرّف الفيديو):</label>
-                <input
-                  type="text"
-                  required
-                  value={bunnyVideoId}
-                  onChange={(e) => setBunnyVideoId(e.target.value)}
-                  placeholder="e.g. 52c93392-xxxx-xxxx-xxxx"
-                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl font-mono text-white focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-medium mb-1">المدة التقريبية (بالدقائق):</label>
-                <input
-                  type="number"
-                  value={videoDuration}
-                  onChange={(e) => setVideoDuration(e.target.value)}
-                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl font-mono text-white"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
+              {/* أزرار اختيار المزود */}
+              <div className="grid grid-cols-3 gap-2 mb-4 p-1 bg-slate-950 rounded-2xl border border-slate-800 text-xs">
                 <button
                   type="button"
-                  onClick={() => setActiveLessonForVideo(null)}
-                  className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-medium"
+                  onClick={() => setVideoProvider("YOUTUBE")}
+                  className={`py-2 px-1.5 rounded-xl font-bold flex flex-col items-center gap-1 transition-all ${
+                    videoProvider === "YOUTUBE"
+                      ? "bg-red-600 text-white shadow-lg shadow-red-600/25"
+                      : "text-slate-400 hover:text-white"
+                  }`}
                 >
-                  إلغاء
+                  <span className="flex items-center gap-1">🔴 يوتيوب</span>
+                  <span className="text-[9px] opacity-90 font-medium">مجاني 100% ⭐</span>
                 </button>
+
                 <button
-                  type="submit"
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold"
+                  type="button"
+                  onClick={() => setVideoProvider("BUNNY")}
+                  className={`py-2 px-1.5 rounded-xl font-bold flex flex-col items-center gap-1 transition-all ${
+                    videoProvider === "BUNNY"
+                      ? "bg-blue-600 text-white shadow-lg shadow-blue-600/25"
+                      : "text-slate-400 hover:text-white"
+                  }`}
                 >
-                  حفظ الفيديو
+                  <span className="flex items-center gap-1">🐰 Bunny Stream</span>
+                  <span className="text-[9px] opacity-75 font-normal">سيرفر مشفر</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setVideoProvider("DIRECT")}
+                  className={`py-2 px-1.5 rounded-xl font-bold flex flex-col items-center gap-1 transition-all ${
+                    videoProvider === "DIRECT"
+                      ? "bg-purple-600 text-white shadow-lg shadow-purple-600/25"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <span className="flex items-center gap-1">🔗 درايف / مباشر</span>
+                  <span className="text-[9px] opacity-75 font-normal">Drive أو MP4</span>
                 </button>
               </div>
-            </form>
+
+              <form onSubmit={handleAddVideo} className="space-y-4 text-xs">
+                {/* تنبيه يوتيوب الإرشادي */}
+                {videoProvider === "YOUTUBE" && (
+                  <div className="p-3 bg-red-950/30 border border-red-500/30 rounded-2xl text-slate-300 space-y-1">
+                    <div className="font-bold text-red-400 flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4" />
+                      <span>نصيحة هامة لحماية فيديوهاتك مجاناً:</span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-slate-300">
+                      ارفع الفيديو على قناتك على يوتيوب واضبط خصوصيته على <strong>&quot;غير مدرج - Unlisted&quot;</strong>. الفيديو لن يظهر في نتائج البحث على يوتيوب، وسيفتح لطلابك فقط داخل مشغل منصتك المحمي مع علامة مائية متحركة برقم هاتف واسم الطالب لمنع تصوير الشاشة.
+                    </p>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">عنوان الفيديو / المحاضرة:</label>
+                  <input
+                    type="text"
+                    required
+                    value={videoTitle}
+                    onChange={(e) => setVideoTitle(e.target.value)}
+                    placeholder="مثال: شرح الباب الأول - مقدمة وتأسيس"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                {videoProvider === "YOUTUBE" && (
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">رابط فيديو اليوتيوب أو المعرّف:</label>
+                    <input
+                      type="text"
+                      required
+                      value={videoUrlOrId}
+                      onChange={(e) => setVideoUrlOrId(e.target.value)}
+                      placeholder="e.g. https://youtu.be/... أو https://www.youtube.com/watch?v=..."
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl font-mono text-white focus:outline-none focus:border-red-500"
+                      dir="ltr"
+                    />
+                    {detectedYtId ? (
+                      <div className="mt-2 space-y-2">
+                        <div className="text-[11px] text-emerald-400 flex items-center gap-1 font-mono">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>معرف يوتيوب المستخرج بنجاح: {detectedYtId}</span>
+                        </div>
+                        <div className="relative rounded-xl overflow-hidden border border-slate-800 aspect-video bg-black max-h-36">
+                          <img
+                            src={`https://img.youtube.com/vi/${detectedYtId}/mqdefault.jpg`}
+                            alt="معاينة الفيديو"
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md bg-black/80 text-[10px] text-white font-bold flex items-center gap-1">
+                            <span>معاينة الغلاف</span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-slate-500 mt-1 block">
+                        يمكنك نسخ ولصق رابط الفيديو من المتصفح مباشرة (سواء كان رابط عادي، رابط مختصر youtu.be، أو غير مدرج).
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {videoProvider === "BUNNY" && (
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">Bunny Video ID (معرّف الفيديو):</label>
+                    <input
+                      type="text"
+                      required
+                      value={videoUrlOrId}
+                      onChange={(e) => setVideoUrlOrId(e.target.value)}
+                      placeholder="e.g. 52c93392-xxxx-xxxx-xxxx"
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl font-mono text-white focus:outline-none focus:border-blue-500"
+                      dir="ltr"
+                    />
+                    <span className="text-[10px] text-slate-500 mt-1 block">
+                      انسخ Video ID من لوحة تحكم Bunny Stream لمكتبة الفيديوهات الخاصة بك.
+                    </span>
+                  </div>
+                )}
+
+                {videoProvider === "DIRECT" && (
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">رابط الفيديو المباشر (.mp4 أو Google Drive):</label>
+                    <input
+                      type="text"
+                      required
+                      value={videoUrlOrId}
+                      onChange={(e) => setVideoUrlOrId(e.target.value)}
+                      placeholder="https://.../video.mp4 أو رابط مشاركة Google Drive"
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl font-mono text-white focus:outline-none focus:border-purple-500"
+                      dir="ltr"
+                    />
+                    <span className="text-[10px] text-slate-500 mt-1 block">
+                      يدعم روابط MP4 المباشرة وروابط Google Drive العامة.
+                    </span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">المدة التقريبية (بالدقائق):</label>
+                    <input
+                      type="number"
+                      value={videoDuration}
+                      onChange={(e) => setVideoDuration(e.target.value)}
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl font-mono text-white"
+                    />
+                  </div>
+
+                  <div className="flex flex-col justify-end">
+                    <label className="flex items-center gap-2 p-2.5 bg-slate-950 border border-slate-800 rounded-xl cursor-pointer hover:border-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={isPreviewFree}
+                        onChange={(e) => setIsPreviewFree(e.target.checked)}
+                        className="rounded border-slate-700 text-blue-600 focus:ring-0"
+                      />
+                      <span className="text-[11px] text-slate-300">معاينة مجانية للكل</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveLessonForVideo(null);
+                      setVideoTitle("");
+                      setVideoUrlOrId("");
+                      setIsPreviewFree(false);
+                    }}
+                    className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-medium"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-lg shadow-blue-600/25"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>حفظ الفيديو</span>
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* مودال إرفاق ملف PDF */}
       {activeLessonForFile && (
