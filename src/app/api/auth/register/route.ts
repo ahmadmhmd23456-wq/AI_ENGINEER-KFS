@@ -34,6 +34,14 @@ const DUMMY_PHONES = [
   "01555555555",
   "01012345678",
   "01234567890",
+  "01505854513",
+];
+
+// قائمة بالحسابات المحظورة أمنياً
+const BANNED_EMAILS = [
+  "ansmarh151@gmail.com",
+  "ansmarh55@gmail.com",
+  "ansomaraai@gmail.com",
 ];
 
 // ذاكرة مؤقتة لتقييد معدل طلبات التسجيل (Rate Limiter: حد أقصى 4 حسابات لكل IP كل 15 دقيقة)
@@ -135,6 +143,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "صيغة البريد الإلكتروني غير صحيحة." },
         { status: 400 }
+      );
+    }
+
+    // فحص القائمة السوداء للحسابات المحظورة
+    if (BANNED_EMAILS.includes(cleanEmail)) {
+      return NextResponse.json(
+        { error: "هذا الحساب محظور أمنياً من التسجيل على المنصة." },
+        { status: 403 }
       );
     }
 
