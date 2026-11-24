@@ -32,7 +32,7 @@ export default function HomePage() {
         </div>
 
         <Link
-          href="/login"
+          href="/login?mode=login"
           onMouseEnter={playCyberHover}
           onClick={playCyberClick}
           className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-600/25 flex items-center gap-2 hover:scale-105 active:scale-95"
@@ -60,15 +60,24 @@ export default function HomePage() {
             منصة تعليمية متكاملة لجميع دفعات هندسة (إعدادي حتى بكالوريوس). محاضرات فيديو مشفرة، شيتات محلولة، وبنوك أسئلة بامتحانات عشوائية تقيس مستواك بدقة.
           </p>
 
-          <div className="flex items-center justify-center anim-video-text delay-200">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 anim-video-text delay-200">
             <Link
-              href="/login"
+              href="/login?mode=login"
               onMouseEnter={playCyberHover}
               onClick={playCyberClick}
-              className="px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-2xl font-bold text-sm transition-all shadow-xl shadow-blue-600/30 flex items-center justify-center gap-2 hover:scale-105 active:scale-95"
+              className="w-full sm:w-auto px-8 py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-bold text-sm transition-all shadow-xl shadow-blue-600/30 flex items-center justify-center gap-2 hover:scale-105 active:scale-95"
             >
-              <span>سجل حسابك وابدأ الآن</span>
+              <span>تسجيل الدخول للمنصة</span>
               <ArrowLeft className="w-4 h-4" />
+            </Link>
+
+            <Link
+              href="/login?mode=register"
+              onMouseEnter={playCyberHover}
+              onClick={playCyberClick}
+              className="w-full sm:w-auto px-7 py-3.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-slate-700/80 rounded-2xl font-bold text-sm transition-all shadow-lg flex items-center justify-center gap-2 hover:scale-105 active:scale-95"
+            >
+              <span>إنشاء حساب طالب جديد</span>
             </Link>
           </div>
 

@@ -25,7 +25,7 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const errorParam = searchParams.get("error");
 
-  const [mode, setMode] = useState<"LOGIN" | "REGISTER">("REGISTER");
+  const [mode, setMode] = useState<"LOGIN" | "REGISTER">("LOGIN");
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -47,10 +47,12 @@ function LoginForm() {
   const [is2FaRequired, setIs2FaRequired] = useState(false);
 
   useEffect(() => {
-    // التحقق من معامل المسار لفتح وضع التسجيل
+    // التحقق من معامل المسار لتحديد التبويب
     const modeParam = searchParams.get("mode");
     if (modeParam === "register" || modeParam === "REGISTER") {
       setMode("REGISTER");
+    } else if (modeParam === "login" || modeParam === "LOGIN") {
+      setMode("LOGIN");
     }
 
     // 1. توليد بصمة الجهاز وكشف نوع وموديل الهاتف تلقائياً
@@ -255,26 +257,8 @@ function LoginForm() {
         <div className="bg-slate-900/95 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden anim-video-text eng-cyber-card">
           <div className="absolute -top-24 -right-24 w-48 h-48 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
 
-          {/* أزرار التبديل بين إنشاء الحساب وتسجيل الدخول */}
+          {/* أزرار التبديل بين تسجيل الدخول وإنشاء الحساب */}
           <div className="bg-slate-950 p-1.5 rounded-2xl border border-slate-800 flex items-center gap-1 mb-6">
-            <button
-              type="button"
-              onClick={() => {
-                playCyberClick();
-                setMode("REGISTER");
-                setErrorMessage(null);
-              }}
-              onMouseEnter={playCyberHover}
-              className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
-                mode === "REGISTER"
-                  ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <UserPlus className="w-4 h-4" />
-              <span>إنشاء حساب جديد</span>
-            </button>
-
             <button
               type="button"
               onClick={() => {
@@ -291,6 +275,24 @@ function LoginForm() {
             >
               <LogIn className="w-4 h-4" />
               <span>تسجيل الدخول</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                playCyberClick();
+                setMode("REGISTER");
+                setErrorMessage(null);
+              }}
+              onMouseEnter={playCyberHover}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                mode === "REGISTER"
+                  ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>إنشاء حساب جديد</span>
             </button>
           </div>
 
