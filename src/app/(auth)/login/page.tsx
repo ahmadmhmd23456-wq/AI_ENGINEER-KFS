@@ -178,7 +178,19 @@ function LoginForm() {
       }
 
       playSuccessChime();
-      window.location.href = "/student/courses";
+
+      // التوجيه الذكي حسب الدور (أدمن أو طالب) وحسب الـ callbackUrl
+      const callbackUrl = searchParams.get("callbackUrl");
+      try {
+        const sessionRes = await fetch("/api/auth/session");
+        const sessionData = await sessionRes.json();
+        if (sessionData?.user?.role === "ADMIN") {
+          window.location.href = callbackUrl || "/admin/dashboard";
+          return;
+        }
+      } catch {}
+
+      window.location.href = callbackUrl || "/student/courses";
     } catch {
       setErrorMessage("حدث خطأ غير متوقع أثناء تسجيل الدخول");
       setIsLoading(false);

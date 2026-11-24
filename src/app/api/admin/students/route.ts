@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-guard";
+import { buildStudentSearchQuery } from "@/lib/arabic-search";
 
 export async function GET(req: NextRequest) {
   try {
@@ -16,18 +17,26 @@ export async function GET(req: NextRequest) {
     if (levelId) where.academicLevelId = levelId;
     if (status) where.status = status;
     if (search) {
-      where.OR = [
-        { name: { contains: search } },
-        { phone: { contains: search } },
-        { email: { contains: search } },
-      ];
+      const searchQuery = buildStudentSearchQuery(search);
+      Object.assign(where, searchQuery);
     }
 
     const students = await prisma.user.findMany({
       where,
       include: {
         academicLevel: true,
-        devices: true,
+        devices: {
+          orderBy: { lastActiveAt: "desc" },
+        },
+        purchases: {
+          where: { status: "COMPLETED" },
+          select: {
+            id: true,
+            subjectId: true,
+            amount: true,
+            createdAt: true,
+          },
+        },
         _count: {
           select: {
             purchases: { where: { status: "COMPLETED" } },
@@ -42,7 +51,24 @@ export async function GET(req: NextRequest) {
       orderBy: { order: "asc" },
     });
 
-    return NextResponse.json({ students, levels });
+    const subjects = await prisma.subject.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        price: true,
+        academicLevelId: true,
+        department: true,
+        term: true,
+      },
+      orderBy: [
+        { term: "asc" },
+        { order: "asc" },
+      ],
+    });
+
+    return NextResponse.json({ students, levels, subjects });
   } catch (error) {
     console.error("Admin Students GET Error:", error);
     return NextResponse.json({ error: "فشل تحميل قائمة الطلاب" }, { status: 500 });
@@ -55,25 +81,113 @@ export async function POST(req: NextRequest) {
     if (error) return error;
 
     const body = await req.json();
-    const { userId, action, newEmail, academicLevelId } = body;
+    const {
+      userId,
+      action,
+      newEmail,
+      academicLevelId,
+      subjectId,
+      grant,
+      deviceId,
+      maxAllowedDevices,
+    } = body;
 
     if (!userId || !action) {
       return NextResponse.json({ error: "البيانات ناقصة" }, { status: 400 });
     }
 
+    // 1. فتح أو إغلاق مادة للطالب (شحن يدوي)
+    if (action === "TOGGLE_SUBJECT" && subjectId) {
+      if (grant) {
+        const subject = await prisma.subject.findUnique({ where: { id: subjectId } });
+        await prisma.purchase.upsert({
+          where: {
+            userId_subjectId: { userId, subjectId },
+          },
+          update: {
+            status: "COMPLETED",
+            paymentMethod: "MANUAL_GRANT",
+            paymentGateway: "MANUAL",
+            adminNotes: "شحن وفتح يدوي من لوحة الأدمن",
+          },
+          create: {
+            userId,
+            subjectId,
+            amount: subject?.price || 0,
+            status: "COMPLETED",
+            paymentMethod: "MANUAL_GRANT",
+            paymentGateway: "MANUAL",
+            transactionId: `MANUAL_${Date.now()}`,
+            adminNotes: "شحن وفتح يدوي من لوحة الأدمن",
+          },
+        });
+        return NextResponse.json({ success: true, message: "تم فتح وتفعيل المادة للطالب بنجاح!" });
+      } else {
+        await prisma.purchase.deleteMany({
+          where: { userId, subjectId },
+        });
+        return NextResponse.json({ success: true, message: "تم قفل المادة عن الطالب بنجاح!" });
+      }
+    }
+
+    // 2. حذف جهاز محدد لطالب (Unbind Device)
+    if (action === "DELETE_DEVICE" && deviceId) {
+      await prisma.deviceSession.delete({
+        where: { id: deviceId },
+      });
+      return NextResponse.json({ success: true, message: "تم إزالة الجهاز بنجاح ويمكن للطالب ربط جهاز جديد" });
+    }
+
+    // 3. إعادة ضبط كامل أجهزة وبصمات الطالب (Reset All Devices)
+    if (action === "RESET_ALL_DEVICES") {
+      await prisma.deviceSession.deleteMany({
+        where: { userId },
+      });
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          phoneType: null,
+          initialFingerprint: null,
+          status: "ACTIVE", // فك الحظر إن كان مقفولاً بسبب تعارض الأجهزة
+        },
+      });
+      return NextResponse.json({
+        success: true,
+        message: "تم مسح جميع الأجهزة وفك الحظر بنجاح، الجهاز القادم سيتم ربطه تلقائياً كجهازه الأساسي.",
+      });
+    }
+
+    // 4. تعديل الحد الأقصى للأجهزة المسموح بها للطالب
+    if (action === "UPDATE_MAX_DEVICES" && maxAllowedDevices) {
+      const num = parseInt(maxAllowedDevices, 10);
+      if (isNaN(num) || num < 1 || num > 5) {
+        return NextResponse.json({ error: "عدد الأجهزة يجب أن يكون بين 1 و 5" }, { status: 400 });
+      }
+      await prisma.user.update({
+        where: { id: userId },
+        data: { maxAllowedDevices: num },
+      });
+      return NextResponse.json({ success: true, message: `تم تحديث الحد الأقصى للأجهزة إلى (${num})` });
+    }
+
+    // 5. تعديل البريد الإلكتروني
     if (action === "CHANGE_EMAIL" && newEmail) {
       await prisma.user.update({
         where: { id: userId },
         data: { email: newEmail.toLowerCase().trim() },
       });
-    } else if (action === "TOGGLE_LOCK") {
+    }
+    // 6. قفل أو فك حظر الحساب
+    else if (action === "TOGGLE_LOCK") {
       const user = await prisma.user.findUnique({ where: { id: userId } });
       const newStatus = user?.status === "LOCKED" ? "ACTIVE" : "LOCKED";
       await prisma.user.update({
         where: { id: userId },
         data: { status: newStatus },
       });
-    } else if (action === "CHANGE_LEVEL" && academicLevelId) {
+    }
+    // 7. تغيير الدفعة الأكاديمية
+    else if (action === "CHANGE_LEVEL" && academicLevelId) {
       await prisma.user.update({
         where: { id: userId },
         data: { academicLevelId },

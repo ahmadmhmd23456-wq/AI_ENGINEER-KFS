@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-guard";
+import { getArabicVariants } from "@/lib/arabic-search";
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,12 +15,14 @@ export async function GET(req: NextRequest) {
     const where: any = {};
     if (status) where.status = status;
     if (search) {
+      const variants = getArabicVariants(search);
       where.OR = [
         { transactionId: { contains: search } },
         { gatewayOrderId: { contains: search } },
-        { user: { name: { contains: search, mode: "insensitive" } } },
+        ...variants.map((v) => ({ user: { name: { contains: v, mode: "insensitive" as const } } })),
         { user: { phone: { contains: search } } },
-        { subject: { name: { contains: search, mode: "insensitive" } } },
+        { user: { email: { contains: search, mode: "insensitive" as const } } },
+        { subject: { name: { contains: search, mode: "insensitive" as const } } },
       ];
     }
 
@@ -34,13 +37,27 @@ export async function GET(req: NextRequest) {
 
     const students = await prisma.user.findMany({
       where: { role: "STUDENT" },
-      select: { id: true, name: true, phone: true },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        email: true,
+        academicLevel: { select: { name: true } },
+      },
       orderBy: { name: "asc" },
     });
 
     const subjects = await prisma.subject.findMany({
-      select: { id: true, name: true, price: true },
-      orderBy: { name: "asc" },
+      where: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        price: true,
+        term: true,
+        department: true,
+      },
+      orderBy: [{ term: "asc" }, { order: "asc" }],
     });
 
     return NextResponse.json({ purchases, students, subjects });

@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   BookOpen,
   Users,
+  Search,
   ShieldAlert,
   FileQuestion,
   CreditCard,
@@ -33,6 +34,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const navItems = [
     { label: "لوحة التحكم", href: "/admin/dashboard", icon: LayoutDashboard },
+    { label: "البحث الشامل", href: "/admin/search", icon: Search },
     { label: "الدفعات والمواد", href: "/admin/subjects", icon: BookOpen },
     { label: "إدارة الطلاب", href: "/admin/students", icon: Users },
     {
