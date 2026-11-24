@@ -11,6 +11,7 @@ import {
   Smartphone,
   Zap,
   ArrowRight,
+  ArrowLeft,
   RefreshCw,
   X,
   GraduationCap,
@@ -19,6 +20,13 @@ import {
   FileText,
   Sparkles,
   Heart,
+  Cpu,
+  Bot,
+  Compass,
+  Building2,
+  Check,
+  Layers,
+  Settings2,
 } from "lucide-react";
 import {
   playCyberHover,
@@ -27,11 +35,100 @@ import {
   playSuccessChime,
 } from "@/lib/sound";
 
+export interface DepartmentInfo {
+  id: string;
+  name: string;
+  shortName: string;
+  badge: string;
+  icon: any;
+  colorName: string;
+  gradient: string;
+  border: string;
+  hoverBorder: string;
+  glow: string;
+  textCol: string;
+  tagClass: string;
+  description: string;
+  focusTopics: string[];
+}
+
+export const DEPARTMENTS: DepartmentInfo[] = [
+  {
+    id: "AI",
+    name: "هندسة الذكاء الاصطناعي",
+    shortName: "ذكاء اصطناعي",
+    badge: "AI & Smart Systems",
+    icon: Cpu,
+    colorName: "cyan",
+    gradient: "from-cyan-950/40 via-blue-950/30 to-slate-900",
+    border: "border-cyan-500/30",
+    hoverBorder: "hover:border-cyan-400",
+    glow: "shadow-cyan-500/20",
+    textCol: "text-cyan-400",
+    tagClass: "bg-cyan-500/10 text-cyan-400 border-cyan-500/30",
+    description: "التعلم الآلي والعميق، خوارزميات الرؤية الحاسوبية، النظم الخبيرة، ومعالجة البيانات والذكاء الاصطناعي التوليدي.",
+    focusTopics: ["تعلم الآلة والعميق", "رؤية حاسوبية", "بايثون المتقدمة", "خوارزميات وهياكل بيانات"]
+  },
+  {
+    id: "MECHATRONICS",
+    name: "هندسة الميكاترونكس والروبوتات",
+    shortName: "ميكاترونكس",
+    badge: "Robotics & Automation",
+    icon: Bot,
+    colorName: "amber",
+    gradient: "from-amber-950/40 via-orange-950/30 to-slate-900",
+    border: "border-amber-500/30",
+    hoverBorder: "hover:border-amber-400",
+    glow: "shadow-amber-500/20",
+    textCol: "text-amber-400",
+    tagClass: "bg-amber-500/10 text-amber-400 border-amber-500/30",
+    description: "الأنظمة الميكانيكية الذكية، الروبوتات الصناعية، التحكم الآلي PLC، والدوائر الإلكترونية المدمجة.",
+    focusTopics: ["التحكم الآلي والروبوتات", "دوائر إلكترونية وأنظمة مدمجة", "ميكانيكا دقيقة وحساسات", "برمجة المتحكمات Microcontrollers"]
+  },
+  {
+    id: "ARCHITECTURE",
+    name: "الهندسة المعمارية والتصميم",
+    shortName: "معماري",
+    badge: "Architecture & Design",
+    icon: Compass,
+    colorName: "emerald",
+    gradient: "from-emerald-950/40 via-teal-950/30 to-slate-900",
+    border: "border-emerald-500/30",
+    hoverBorder: "hover:border-emerald-400",
+    glow: "shadow-emerald-500/20",
+    textCol: "text-emerald-400",
+    tagClass: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+    description: "التصميم والتخطيط المعماري، الإظهار الرقمي وتقنيات BIM، نظريات وتاريخ العمارة، وتكنولوجيا البناء والتشييد.",
+    focusTopics: ["التصميم المعماري الإبداعي", "الإظهار المعماري والـ BIM", "نظريات وتاريخ العمارة", "تكنولوجيا وخامات البناء"]
+  },
+  {
+    id: "CIVIL",
+    name: "الهندسة المدنية والإنشائية",
+    shortName: "مدني",
+    badge: "Civil & Structural",
+    icon: Building2,
+    colorName: "blue",
+    gradient: "from-blue-950/40 via-indigo-950/30 to-slate-900",
+    border: "border-blue-500/30",
+    hoverBorder: "hover:border-blue-400",
+    glow: "shadow-blue-500/20",
+    textCol: "text-blue-400",
+    tagClass: "bg-blue-500/10 text-blue-400 border-blue-500/30",
+    description: "تحليل وتصميم المنشآت الخرسانية والمعدنية، ميكانيكا التربة والأساسات، هندسة المساحة، وإدارة المشروعات.",
+    focusTopics: ["تحليل إنشائي وخرسانة مسلحة", "ميكانيكا التربة والأساسات", "هندسة المساحة والطرق", "إدارة مشروعات التشييد"]
+  }
+];
+
 export default function StudentCoursesPage() {
   const router = useRouter();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [currentTerm, setCurrentTerm] = useState<1 | 2>(1);
+
+  // حالة اختيار وتصفية القسم الهندسي
+  const [selectedDept, setSelectedDept] = useState<string>("ALL");
+  const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
+  const [isSavingDept, setIsSavingDept] = useState(false);
 
   // حالة مودال الدفع
   const [selectedSubjectToBuy, setSelectedSubjectToBuy] = useState<any | null>(null);
@@ -44,6 +141,13 @@ export default function StudentCoursesPage() {
       .then((res) => res.json())
       .then((json) => {
         setData(json);
+        const userDept = json?.user?.department || localStorage.getItem("student_selected_dept");
+        if (userDept) {
+          setSelectedDept(userDept);
+        } else {
+          // فتح نافذة اختيار القسم تلقائياً إذا لم يكن الطالب قد حدد قسماً بعد
+          setIsDeptModalOpen(true);
+        }
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -52,6 +156,28 @@ export default function StudentCoursesPage() {
   useEffect(() => {
     fetchCourses();
   }, []);
+
+  // اختيار وحفظ القسم الهندسي
+  const handleSelectDepartment = async (deptId: string) => {
+    setIsSavingDept(true);
+    playCyberClick();
+    setSelectedDept(deptId);
+    localStorage.setItem("student_selected_dept", deptId);
+
+    try {
+      await fetch("/api/student/department", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ department: deptId }),
+      });
+      playSuccessChime();
+    } catch {
+      // حفظ محلي في حال تعذر الشبكة
+    } finally {
+      setIsSavingDept(false);
+      setIsDeptModalOpen(false);
+    }
+  };
 
   const handleCheckout = async (isDemoInstant: boolean = false) => {
     if (!selectedSubjectToBuy) return;
@@ -95,38 +221,69 @@ export default function StudentCoursesPage() {
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="flex flex-col items-center gap-3">
           <RefreshCw className="w-8 h-8 text-blue-500 animate-spin" />
-          <p className="text-xs text-slate-400">جاري تحميل موادك الدراسية...</p>
+          <p className="text-xs text-slate-400">جاري تحميل موادك الدراسية وأقسامك الهندسية...</p>
         </div>
       </div>
     );
   }
 
   const { user, subjects } = data || {};
-  const filteredSubjects = subjects?.filter((s: any) => s.term === currentTerm) || [];
+
+  // فلترة المواد حسب الترم والقسم
+  const termSubjects = subjects?.filter((s: any) => s.term === currentTerm) || [];
+  const currentDeptInfo = DEPARTMENTS.find((d) => d.id === selectedDept);
 
   return (
     <div className="space-y-6" dir="rtl">
-      {/* بطاقة ترحيبية ومعلومات الدفعة */}
+      {/* بطاقة ترحيبية ومعلومات الدفعة والقسم */}
       <div className="eng-scroll-item fox-scroll-item bg-gradient-to-r from-blue-950/60 via-indigo-950/40 to-slate-900 border border-blue-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="px-3 py-1 bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded-full text-xs font-bold flex items-center gap-1.5">
                 <GraduationCap className="w-4 h-4" />
                 <span>{user?.academicLevel?.name || "إعدادي هندسة"}</span>
               </span>
-              <span className="text-xs text-slate-400">| 5 مواد لكل ترم</span>
+
+              {/* بادج القسم المختار مع زر تغييره */}
+              {currentDeptInfo ? (
+                <div className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 ${currentDeptInfo.tagClass}`}>
+                  {React.createElement(currentDeptInfo.icon, { className: "w-3.5 h-3.5" })}
+                  <span>قسم {currentDeptInfo.shortName}</span>
+                </div>
+              ) : (
+                <span className="px-3 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/30 rounded-full text-xs font-bold flex items-center gap-1.5 animate-pulse">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>لم يتم تحديد القسم</span>
+                </span>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  playCyberClick();
+                  setIsDeptModalOpen(true);
+                }}
+                onMouseEnter={playCyberHover}
+                className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 rounded-full text-[11px] font-medium flex items-center gap-1 transition-all"
+              >
+                <Settings2 className="w-3 h-3 text-blue-400" />
+                <span>{currentDeptInfo ? "تغيير القسم" : "اختيار القسم الآن"}</span>
+              </button>
             </div>
+
             <h1 className="text-xl sm:text-2xl font-bold text-white">
               مرحباً يا بشمهندس، {user?.name || ""} 👋
             </h1>
-            <p className="text-xs text-slate-300 mt-1">
-              المواد مرتبة بالتسلسل الأكاديمي. يمكنك الدخول لأي مادة مشتركة لمتابعة الحصص والامتحانات.
+            <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+              {currentDeptInfo
+                ? `مقررات وتدريبات ${currentDeptInfo.name}. يمكنك الدخول لأي مادة لمتابعة المحاضرات والشيتات وبنوك الأسئلة.`
+                : "يرجى تحديد قسمك الهندسي لعرض المقررات المتخصصة وفقاً لتخصصك الأكاديمي."}
             </p>
           </div>
 
-          {/* محدد الترم */}
-          <div className="bg-slate-950 p-1.5 rounded-2xl border border-slate-800 flex items-center gap-1 self-start sm:self-auto">
+          {/* محدد الترم الدراسي */}
+          <div className="bg-slate-950 p-1.5 rounded-2xl border border-slate-800 flex items-center gap-1 self-start lg:self-auto">
             <button
               onClick={() => {
                 playWhoosh();
@@ -155,9 +312,78 @@ export default function StudentCoursesPage() {
         </div>
       </div>
 
-      {/* قائمة المواد مرتبة رأسياً تحت بعضها مع الانيميشن والمؤثرات الصوتية */}
+      {/* شريط اختيار وتبديل الأقسام الهندسية التفاعلي */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Layers className="w-4 h-4 text-blue-400" />
+            <h2 className="text-xs font-bold text-slate-300 uppercase tracking-wider font-mono">
+              الأقسام والتخصصات الهندسية:
+            </h2>
+          </div>
+          <span className="text-[11px] text-slate-500 font-mono">اضغط على أي قسم لمعاينة مواده</span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {DEPARTMENTS.map((dept) => {
+            const isSelected = selectedDept === dept.id;
+            const Icon = dept.icon;
+            return (
+              <button
+                key={dept.id}
+                type="button"
+                onClick={() => handleSelectDepartment(dept.id)}
+                onMouseEnter={playCyberHover}
+                className={`p-3.5 rounded-2xl border text-right transition-all flex flex-col justify-between gap-2.5 relative overflow-hidden group hover:scale-[1.02] active:scale-[0.98] ${
+                  isSelected
+                    ? `bg-slate-900/95 ${dept.border} shadow-lg ${dept.glow}`
+                    : "bg-slate-950/60 border-slate-800/80 hover:border-slate-700"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all ${
+                      isSelected
+                        ? `${dept.tagClass} shadow-md`
+                        : "bg-slate-900 border-slate-800 text-slate-400 group-hover:text-white"
+                    }`}
+                  >
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  {isSelected && (
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  )}
+                </div>
+
+                <div>
+                  <div className={`text-xs font-bold transition-colors ${isSelected ? dept.textCol : "text-slate-200 group-hover:text-white"}`}>
+                    {dept.shortName}
+                  </div>
+                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                    {dept.badge}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* قائمة المواد للمواد المشتركة وتخصص القسم */}
       <div className="space-y-4">
-        {filteredSubjects.map((sub: any, index: number) => {
+        <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+          <div className="flex items-center gap-2">
+            <BookOpen className="w-4 h-4 text-blue-400" />
+            <h3 className="text-sm font-bold text-white">
+              المقررات الدراسية {currentDeptInfo ? `- قسم ${currentDeptInfo.shortName}` : ""}
+            </h3>
+          </div>
+          <span className="text-xs text-slate-400 font-mono">
+            {termSubjects.length} مواد متاحة
+          </span>
+        </div>
+
+        {termSubjects.map((sub: any, index: number) => {
           const isUnlocked = sub.isPurchased;
           const scrollDelay = index === 0 ? "fox-delay-75" : index === 1 ? "fox-delay-150" : index === 2 ? "fox-delay-200" : index === 3 ? "fox-delay-250" : "fox-delay-300";
           return (
@@ -193,6 +419,14 @@ export default function StudentCoursesPage() {
                         {sub.code}
                       </span>
                     )}
+
+                    {/* بادج التخصص */}
+                    {currentDeptInfo && (
+                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${currentDeptInfo.tagClass}`}>
+                        {currentDeptInfo.shortName}
+                      </span>
+                    )}
+
                     {isUnlocked ? (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                         <CheckCircle2 className="w-3 h-3" />
@@ -248,8 +482,8 @@ export default function StudentCoursesPage() {
                     onMouseEnter={playCyberHover}
                     className="py-2.5 px-5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-900/30 whitespace-nowrap hover:scale-105 active:scale-95"
                   >
-                    <span>دخول المادة</span>
-                    <ArrowRight className="w-4 h-4" />
+                    <span>الدخول للمادة والمحاضرات</span>
+                    <ArrowLeft className="w-4 h-4" />
                   </button>
                 ) : (
                   <button
@@ -258,10 +492,10 @@ export default function StudentCoursesPage() {
                       setSelectedSubjectToBuy(sub);
                     }}
                     onMouseEnter={playCyberHover}
-                    className="py-2.5 px-5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-600/25 whitespace-nowrap hover:scale-105 active:scale-95"
+                    className="py-2.5 px-5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-600/30 whitespace-nowrap hover:scale-105 active:scale-95"
                   >
-                    <Unlock className="w-4 h-4" />
-                    <span>شراء وتفعيل ({sub.price} ج.م)</span>
+                    <span>اشترك الآن</span>
+                    <CreditCard className="w-4 h-4" />
                   </button>
                 )}
               </div>
@@ -270,93 +504,115 @@ export default function StudentCoursesPage() {
         })}
       </div>
 
-      {/* 💌 رسالة مؤثرة من فريق المنصة وتيم تصوير الفيديوهات لمهندسي المستقبل */}
-      <div className="eng-scroll-item fox-scroll-item relative rounded-3xl bg-gradient-to-b from-blue-950/40 via-slate-900 to-slate-950 border border-blue-500/30 p-6 sm:p-8 shadow-2xl overflow-hidden eng-glow-blue mt-8">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-        
-        <div className="relative z-10">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 pb-5 border-b border-slate-800">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/25 pulse-ring flex-shrink-0">
-                <Heart className="w-5 h-5 text-red-300" />
-              </div>
-              <div>
-                <span className="text-[10px] font-bold text-blue-400 font-mono tracking-wider block">A MESSAGE FROM THE TEAM</span>
-                <h3 className="text-base sm:text-lg font-extrabold text-white">رسالة من القلب.. لكل مهندس ومهندسة في مصر 🇪🇬</h3>
-              </div>
-            </div>
-            <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-500/10 border border-blue-500/20 text-blue-300 flex items-center gap-1.5 self-start sm:self-auto">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>معاً حتى التخرج وبامتياز</span>
-            </span>
-          </div>
+      {/* نافذة مودال اختيار القسم الهندسي (Department Selection Modal) */}
+      {isDeptModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md anim-video-modal">
+          <div className="bg-slate-900 border border-slate-700/80 rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl relative overflow-hidden" dir="rtl">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
 
-          <div className="space-y-3.5 text-slate-300 text-xs sm:text-sm leading-relaxed">
-            <p className="font-bold text-white text-sm sm:text-base">يا بشمهندس المستقبل..</p>
-            <p>
-              إحنا عارفين كويس إن <span className="text-blue-400 font-semibold">طريق كلية الهندسة مش مفروش بالورد</span>. عارفين يعني إيه تفضل سهران للساعة 4 الصبح وسط شيتات الماث ومسائل الاستاتيكا والديناميكا المعقدة، وعارفين ضغط الكويزات والميدترم، والتوهة اللي بتمر بيها وسط كمية المقررات.
-            </p>
-            <p>
-              عشان كدة المنصة دي مكنتش بالنسبة لينا مجرد كود اتكتب أو كاميرا اتفتحت وصورت.. <strong className="text-white">كل دقيقة فيديو</strong> اتسجلت، اتعادت مرة واتنين وتلاتة عشان تطلعلك بأعلى نقاء وجودة وبدون أي حشو، وتدخل في صلب الفهم الهندسي فوراً. وكل شيت اتحل خطوة بخطوة، وكل كود أمان ومؤثر صوتي اتصمم، كان معمول بهدف واحد: <span className="text-emerald-400 font-semibold">إنك تلاقي ضهر وسند حقيقي في دراستك</span>.
-            </p>
-            <p>
-              سعر الاشتراك الرمزي <span className="font-mono font-bold text-white bg-slate-800/80 px-2 py-0.5 rounded-md border border-slate-700">50 ج.م</span> للمادة مكنش تجارة، ده كان عهد مننا عشان مفيش طالب هندسة في مصر يحس إن المادة تقيلة عليه أو إن في عائق مادي بينه وبين الشرح "الفول أوبشن" اللي يستحقه ويوصله للدرجة النهائية.
-            </p>
-            <p className="pt-2 text-white font-medium">
-              أنت مش مجرد رقم على المنصة.. <span className="laser-shimmer-text font-black text-base">أنت مشروع مهندس عظيم بكره هيبني بلده ويفتخر بيه أهله ونفتخر بيه إحنا كمان.</span>
-            </p>
-          </div>
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-600/20 border border-blue-500/30 text-blue-400 flex items-center justify-center">
+                  <GraduationCap className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-white">اختر قسمك الهندسي</h3>
+                  <p className="text-xs text-slate-400">حدد تخصصك لعرض المواد والمحاضرات والامتحانات المناسبة لك</p>
+                </div>
+              </div>
 
-          <div className="mt-6 pt-5 border-t border-slate-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-blue-400 font-bold text-xs">
-                ENG
-              </div>
-              <div>
-                <div className="text-xs font-bold text-white">د. محمد & فريق التصوير وتطوير المنصة</div>
-                <div className="text-[10px] text-slate-400">في ضهرك من إعدادي حتى مشروع التخرج 📐</div>
-              </div>
+              {selectedDept !== "ALL" && (
+                <button
+                  type="button"
+                  onClick={() => setIsDeptModalOpen(false)}
+                  className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-all"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
-            <div className="text-[11px] text-slate-500 font-mono">
-              Designed with passion for Egyptian Engineering Students
+
+            {/* كروت الأقسام الـ 4 التفاعلية */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 my-6">
+              {DEPARTMENTS.map((dept) => {
+                const isSelected = selectedDept === dept.id;
+                const Icon = dept.icon;
+                return (
+                  <div
+                    key={dept.id}
+                    onClick={() => handleSelectDepartment(dept.id)}
+                    onMouseEnter={playCyberHover}
+                    className={`p-4 rounded-2xl border text-right cursor-pointer transition-all flex flex-col justify-between gap-3 relative overflow-hidden group hover:scale-[1.02] active:scale-[0.99] ${
+                      isSelected
+                        ? `bg-slate-950 ${dept.border} shadow-xl ${dept.glow}`
+                        : "bg-slate-950/70 border-slate-800/80 hover:border-slate-700"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${dept.tagClass}`}>
+                        <Icon className="w-5 h-5" />
+                      </div>
+                      <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${dept.tagClass}`}>
+                        {dept.badge}
+                      </span>
+                    </div>
+
+                    <div>
+                      <h4 className={`text-sm font-bold ${isSelected ? dept.textCol : "text-white group-hover:text-blue-400"} transition-colors`}>
+                        {dept.name}
+                      </h4>
+                      <p className="text-[11px] text-slate-400 leading-relaxed mt-1">
+                        {dept.description}
+                      </p>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
+                      <span className="text-slate-500 font-mono">
+                        {dept.focusTopics[0]} • {dept.focusTopics[1]}
+                      </span>
+                      <span className={`font-bold flex items-center gap-1 ${dept.textCol}`}>
+                        <span>اختيار</span>
+                        <ArrowLeft className="w-3 h-3" />
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="text-center">
+              <p className="text-xs text-slate-500 font-mono">
+                يمكنك تغيير القسم في أي وقت من أعلى الصفحة بكل سهولة.
+              </p>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* مودال الدفع المصري المتكامل */}
+      {/* مودال الدفع والاشتراك السريع */}
       {selectedSubjectToBuy && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm anim-video-modal">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-md w-full p-6 shadow-2xl relative">
             <button
               onClick={() => setSelectedSubjectToBuy(null)}
-              className="absolute top-5 left-5 text-slate-400 hover:text-white"
+              className="absolute top-4 left-4 text-slate-400 hover:text-white"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center">
-                <CreditCard className="w-5 h-5" />
+            <div className="text-center mb-6">
+              <div className="w-12 h-12 rounded-2xl bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center mx-auto mb-3">
+                <CreditCard className="w-6 h-6" />
               </div>
-              <div>
-                <h3 className="text-base font-bold text-white">تأكيد الاشتراك والشراء</h3>
-                <p className="text-xs text-slate-400">{selectedSubjectToBuy.name}</p>
-              </div>
-            </div>
-
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl mb-5 flex items-center justify-between">
-              <span className="text-xs text-slate-400">إجمالي المبلغ المطلوب:</span>
-              <span className="text-xl font-bold font-mono text-emerald-400">
+              <h3 className="text-lg font-bold text-white">تأكيد الاشتراك في المادة</h3>
+              <p className="text-xs text-slate-400 mt-1">{selectedSubjectToBuy.name}</p>
+              <div className="text-2xl font-bold font-mono text-emerald-400 mt-2">
                 {selectedSubjectToBuy.price} ج.م
-              </span>
+              </div>
             </div>
 
             {/* طرق الدفع */}
-            <div className="space-y-2.5 mb-6 text-xs">
-              <label className="font-bold text-slate-300 block mb-1">اختر طريقة الدفع المناسبة لك:</label>
-
+            <div className="space-y-2 mb-6">
               <label
                 onClick={() => setSelectedPaymentMethod("WALLET")}
                 className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
@@ -368,8 +624,8 @@ export default function StudentCoursesPage() {
                 <div className="flex items-center gap-3">
                   <Smartphone className="w-4 h-4 text-emerald-400" />
                   <div>
-                    <div className="font-bold">محفظة إلكترونية (فودافون كاش / أورنج / اتصالات / وي)</div>
-                    <div className="text-[10px] text-slate-400">الدفع الفوري عبر رقم المحفظة برمز OTP</div>
+                    <div className="font-bold">محفظة إلكترونية (فودافون كاش / أورنج / وي / اتصالات)</div>
+                    <div className="text-[10px] text-slate-400">دفع فوري وآمن بخصم مباشر</div>
                   </div>
                 </div>
                 <input type="radio" checked={selectedPaymentMethod === "WALLET"} readOnly />

@@ -58,6 +58,7 @@ export async function GET() {
         phone: user.phone,
         academicLevel: user.academicLevel,
         canChangeLevel: user.canChangeLevel,
+        department: user.department || null,
       },
       subjects: enrichedSubjects,
     });

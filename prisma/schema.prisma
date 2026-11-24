@@ -27,6 +27,7 @@ model User {
   academicLevelId       String?
   academicLevel         AcademicLevel? @relation(fields: [academicLevelId], references: [id])
   canChangeLevel        Boolean       @default(false)
+  department            String?       // AI, MECHATRONICS, ARCHITECTURE, CIVIL
 
   maxAllowedDevices     Int           @default(1)
   devices               DeviceSession[]
@@ -119,6 +120,7 @@ model Subject {
   term            Int
   order           Int            @default(0)
   isActive        Boolean        @default(true)
+  department      String?        @default("GENERAL") // GENERAL, AI, MECHATRONICS, ARCHITECTURE, CIVIL
 
   lessons         Lesson[]
   questions       Question[]
