@@ -2,20 +2,67 @@ import { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import prisma from "./prisma";
 import { lockAccountAndAlertAdmin } from "./security-guard";
+import {
+  checkLoginRateLimit,
+  recordFailedLogin,
+  recordSuccessfulLogin,
+} from "./rate-limiter";
+
+const isProduction =
+  process.env.NODE_ENV === "production" ||
+  process.env.NEXTAUTH_URL?.startsWith("https://");
 
 export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 يوماً
+    maxAge: 7 * 24 * 60 * 60, // 7 أيام
+    updateAge: 24 * 60 * 60, // تجديد الجلسة كل 24 ساعة
+  },
+  useSecureCookies: isProduction,
+  cookies: {
+    sessionToken: {
+      name: isProduction
+        ? "__Secure-next-auth.session-token"
+        : "next-auth.session-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: isProduction,
+        maxAge: 7 * 24 * 60 * 60,
+      },
+    },
+    callbackUrl: {
+      name: isProduction
+        ? "__Secure-next-auth.callback-url"
+        : "next-auth.callback-url",
+      options: {
+        sameSite: "lax",
+        path: "/",
+        secure: isProduction,
+      },
+    },
+    csrfToken: {
+      name: isProduction
+        ? "__Host-next-auth.csrf-token"
+        : "next-auth.csrf-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: isProduction,
+      },
+    },
   },
   pages: {
     signIn: "/login",
     error: "/login",
   },
   providers: [
-    // 1. تسجيل الدخول المباشر للطلاب بـ (الجيميل + كلمة المرور + نوع الفون وبصمته)
+    // 1. تسجيل الدخول للطلاب بـ (الجيميل أو الهاتف + كلمة المرور + نوع الفون وبصمته)
     CredentialsProvider({
       id: "student-login",
       name: "تسجيل دخول الطالب",
@@ -26,10 +73,11 @@ export const authOptions: NextAuthOptions = {
         phoneType: { label: "نوع الفون", type: "text" },
         ipAddress: { label: "IP", type: "text" },
         userAgent: { label: "UserAgent", type: "text" },
+        twoFactorCode: { label: "رمز المصادقة 2FA", type: "text" },
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
-          throw new Error("يرجى إدخال الجيميل وكلمة المرور");
+          throw new Error("يرجى إدخال الجيميل أو الهاتف وكلمة المرور.");
         }
 
         const email = credentials.email.toLowerCase().trim();
@@ -37,6 +85,14 @@ export const authOptions: NextAuthOptions = {
         const currentPhoneType = credentials.phoneType || "هاتف محمول";
         const ipAddress = credentials.ipAddress || "127.0.0.1";
         const userAgent = credentials.userAgent || "متصفح الويب";
+
+        // أ) فحص الحماية ومعدل الطلبات Rate Limiting
+        const rateLimit = checkLoginRateLimit(email, ipAddress);
+        if (rateLimit.isBlocked) {
+          throw new Error(
+            `تم حظر محاولات الدخول مؤقتاً بسبب تكرار المحاولات الخاطئة. يرجى الانتظار ${rateLimit.waitSeconds} ثانية والمحاولة مجدداً.`
+          );
+        }
 
         const user = await prisma.user.findFirst({
           where: {
@@ -48,13 +104,17 @@ export const authOptions: NextAuthOptions = {
           },
         });
 
+        // ب) رسالة خطأ عامة موحدة لا تكشف هل البريد موجود أم لا
+        const GENERIC_AUTH_ERROR =
+          "بيانات تسجيل الدخول غير صحيحة. يرجى التحقق من البريد وكلمة المرور.";
+
         if (!user) {
-          throw new Error("البيانات غير صحيحة، أو الحساب غير مسجل بعد.");
+          await recordFailedLogin(email, ipAddress);
+          throw new Error(GENERIC_AUTH_ERROR);
         }
 
-        // 1. فحص هل الحساب محظور أمنياً؟
+        // ج) فحص هل الحساب محظور أمنياً؟
         if (user.status === "LOCKED") {
-          // تسجيل محاولة دخول لحساب محظور
           await prisma.auditLog.create({
             data: {
               userId: user.id,
@@ -70,22 +130,50 @@ export const authOptions: NextAuthOptions = {
           throw new Error("ACCOUNT_LOCKED");
         }
 
-        // 2. التحقق من كلمة المرور إن وجدت
+        // د) التحقق من كلمة المرور مع تسجيل المحاولات الفاشلة والتأخير التدريجي
         if (user.passwordHash) {
-          const isPasswordValid = await bcrypt.compare(credentials.password, user.passwordHash);
+          const isPasswordValid = await bcrypt.compare(
+            credentials.password,
+            user.passwordHash
+          );
           if (!isPasswordValid) {
-            throw new Error("كلمة المرور غير صحيحة.");
+            const failResult = await recordFailedLogin(email, ipAddress);
+            if (failResult.isNowLocked) {
+              throw new Error(
+                "تم إيقاف محاولات الدخول مؤقتاً لمدة 15 دقيقة بعد 5 محاولات متتالية خاطئة لحماية حسابك."
+              );
+            }
+            throw new Error(GENERIC_AUTH_ERROR);
           }
         }
 
-        // 3. الفحص الأمني لنوع الفون وبصمة الجهاز للطلاب (Anti-Account Sharing)
+        // هـ) فحص المصادقة الثنائية 2FA لحسابات الإدارة
+        if (user.role === "ADMIN") {
+          // حساب الأدمن محمي بالمصادقة الثنائية
+          const admin2FaRequired = process.env.ADMIN_2FA_ENABLED === "true";
+          if (admin2FaRequired) {
+            const code = credentials.twoFactorCode?.trim();
+            if (!code) {
+              throw new Error("ADMIN_2FA_REQUIRED");
+            }
+            // فحص كود 2FA إذا كان مفعلاً
+            const expectedCode = process.env.ADMIN_2FA_SECRET || "876524";
+            if (code !== expectedCode) {
+              await recordFailedLogin(email, ipAddress);
+              throw new Error("رمز التحقق الثنائي 2FA غير صحيح.");
+            }
+          }
+        }
+
+        // و) الفحص الأمني لنوع الفون وبصمة الجهاز للطلاب (Anti-Account Sharing)
         if (user.role === "STUDENT") {
-          const approvedDevice = user.devices.find((d) => d.deviceFingerprint === fingerprint);
+          const approvedDevice = user.devices.find(
+            (d) => d.deviceFingerprint === fingerprint
+          );
 
           if (!approvedDevice) {
             const approvedCount = user.devices.filter((d) => d.isApproved).length;
 
-            // إذا تجاوز الحد المسموح به (جهاز واحد افتراضياً)
             if (approvedCount >= user.maxAllowedDevices) {
               const originalPhone = user.phoneType || "غير محدد";
               const reason = `محاولة دخول من هاتف/جهاز مختلف! الهاتف المسجل الأصلي: (${originalPhone}) | الهاتف المحاول حالياً: (${currentPhoneType})`;
@@ -101,7 +189,6 @@ export const authOptions: NextAuthOptions = {
 
               throw new Error("ACCOUNT_LOCKED");
             } else {
-              // تسجيل الجهاز الجديد إذا كان الحساب يسمح
               await prisma.deviceSession.create({
                 data: {
                   userId: user.id,
@@ -116,7 +203,6 @@ export const authOptions: NextAuthOptions = {
               });
             }
           } else {
-            // تحديث وقت آخر نشاط وموديل الهاتف
             await prisma.deviceSession.update({
               where: { id: approvedDevice.id },
               data: {
@@ -127,6 +213,9 @@ export const authOptions: NextAuthOptions = {
             });
           }
         }
+
+        // تسجيل نجاح الدخول وإلغاء عداد المحاولات الفاشلة
+        recordSuccessfulLogin(email, ipAddress);
 
         return {
           id: user.id,
@@ -143,7 +232,8 @@ export const authOptions: NextAuthOptions = {
     // 2. Google OAuth Provider (اختياري)
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID || "demo-google-client-id",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "demo-google-client-secret",
+      clientSecret:
+        process.env.GOOGLE_CLIENT_SECRET || "demo-google-client-secret",
     }),
 
     // 3. مزود الدخول السريع للاختبار المحلي
@@ -159,7 +249,11 @@ export const authOptions: NextAuthOptions = {
         if (!credentials?.email) return null;
 
         const email = credentials.email.toLowerCase().trim();
-        const adminEmail = (process.env.ADMIN_EMAIL || "eng.teacher@gmail.com").toLowerCase().trim();
+        const adminEmail = (
+          process.env.ADMIN_EMAIL || "eng.teacher@gmail.com"
+        )
+          .toLowerCase()
+          .trim();
 
         let user = await prisma.user.findUnique({
           where: { email },
@@ -202,7 +296,7 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async signIn({ user, account, profile }) {
+    async signIn({ user }) {
       if (!user.email) return false;
       const email = user.email.toLowerCase().trim();
 
@@ -218,16 +312,20 @@ export const authOptions: NextAuthOptions = {
     },
 
     async jwt({ token, user, trigger, session }) {
+      // تدوير معرّف الجلسة (Session ID Rotation) لمنع هجمات Session Fixation
       if (user) {
         token.id = user.id;
         token.role = (user as any).role;
         token.status = (user as any).status;
         token.phone = (user as any).phone;
         token.academicLevelId = (user as any).academicLevelId;
+        token.sessionId = crypto.randomUUID(); // رمز فريد جديد للجلسة
+        token.signedInAt = Date.now();
       }
 
       if (trigger === "update" && session) {
-        if (session.academicLevelId) token.academicLevelId = session.academicLevelId;
+        if (session.academicLevelId)
+          token.academicLevelId = session.academicLevelId;
         if (session.phone) token.phone = session.phone;
         if (session.status) token.status = session.status;
       }
@@ -235,7 +333,13 @@ export const authOptions: NextAuthOptions = {
       if (token.email) {
         const dbUser = await prisma.user.findUnique({
           where: { email: token.email },
-          select: { id: true, role: true, status: true, phone: true, academicLevelId: true },
+          select: {
+            id: true,
+            role: true,
+            status: true,
+            phone: true,
+            academicLevelId: true,
+          },
         });
         if (dbUser) {
           token.id = dbUser.id;
@@ -256,6 +360,7 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).status = token.status;
         (session.user as any).phone = token.phone;
         (session.user as any).academicLevelId = token.academicLevelId;
+        (session.user as any).sessionId = token.sessionId;
       }
       return session;
     },

@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { requireAdmin } from "@/lib/auth-guard";
 
 // جلب قائمة المواد
 export async function GET(req: NextRequest) {
   try {
+    const { error } = await requireAdmin();
+    if (error) return error;
+
     const { searchParams } = new URL(req.url);
     const levelId = searchParams.get("levelId");
     const term = searchParams.get("term");
@@ -51,6 +55,9 @@ export async function GET(req: NextRequest) {
 // إضافة أو تعديل مادة
 export async function POST(req: NextRequest) {
   try {
+    const { error } = await requireAdmin();
+    if (error) return error;
+
     const body = await req.json();
     const {
       id,
@@ -126,6 +133,9 @@ export async function POST(req: NextRequest) {
 // إعادة ترتيب المواد (Reorder)
 export async function PATCH(req: NextRequest) {
   try {
+    const { error } = await requireAdmin();
+    if (error) return error;
+
     const body = await req.json();
     const { items, swap } = body;
 
@@ -165,6 +175,9 @@ export async function PATCH(req: NextRequest) {
 // حذف مادة
 export async function DELETE(req: NextRequest) {
   try {
+    const { error } = await requireAdmin();
+    if (error) return error;
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 

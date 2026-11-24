@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { requireAdmin } from "@/lib/auth-guard";
 
 export async function GET(req: NextRequest) {
   try {
+    const { error } = await requireAdmin();
+    if (error) return error;
+
     const { searchParams } = new URL(req.url);
     const search = searchParams.get("search") || "";
     const levelId = searchParams.get("levelId") || "";
@@ -47,6 +51,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const { error } = await requireAdmin();
+    if (error) return error;
+
     const body = await req.json();
     const { userId, action, newEmail, academicLevelId } = body;
 

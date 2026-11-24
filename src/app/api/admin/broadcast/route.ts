@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { requireAdmin } from "@/lib/auth-guard";
 import { sendWhatsAppMessage } from "@/lib/whatsapp";
 
 export async function POST(req: NextRequest) {
   try {
+    const { error } = await requireAdmin();
+    if (error) return error;
+
     const body = await req.json();
     const { targetType, targetId, messageText } = body;
 

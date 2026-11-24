@@ -43,8 +43,16 @@ function LoginForm() {
   // حقول تسجيل الدخول
   const [loginIdentifier, setLoginIdentifier] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [twoFactorCode, setTwoFactorCode] = useState("");
+  const [is2FaRequired, setIs2FaRequired] = useState(false);
 
   useEffect(() => {
+    // التحقق من معامل المسار لفتح وضع التسجيل
+    const modeParam = searchParams.get("mode");
+    if (modeParam === "register" || modeParam === "REGISTER") {
+      setMode("REGISTER");
+    }
+
     // 1. توليد بصمة الجهاز وكشف نوع وموديل الهاتف تلقائياً
     getDeviceFingerprint().then((info) => {
       setDeviceInfo(info);
@@ -67,7 +75,7 @@ function LoginForm() {
     } else if (errorParam) {
       setErrorMessage("فشل تسجيل الدخول أو تم رفض الجلسة.");
     }
-  }, [errorParam]);
+  }, [errorParam, searchParams]);
 
   // إرسال طلب تسجيل حساب جديد
   const handleRegister = async (e: React.FormEvent) => {
@@ -146,6 +154,7 @@ function LoginForm() {
       const res = await signIn("student-login", {
         email: loginIdentifier,
         password: loginPassword,
+        twoFactorCode: is2FaRequired ? twoFactorCode : undefined,
         deviceFingerprint: deviceInfo.fingerprint,
         phoneType: phoneType || deviceInfo.deviceModel,
         redirect: false,
@@ -156,7 +165,13 @@ function LoginForm() {
           window.location.href = "/locked";
           return;
         }
-        setErrorMessage(res.error || "فشل تسجيل الدخول. تأكد من الجيميل وكلمة المرور.");
+        if (res.error.includes("ADMIN_2FA_REQUIRED")) {
+          setIs2FaRequired(true);
+          setErrorMessage("هذا الحساب محمي بالمصادقة الثنائية (2FA). يرجى إدخال رمز التحقق المخصص للمتابعة.");
+          setIsLoading(false);
+          return;
+        }
+        setErrorMessage(res.error || "بيانات تسجيل الدخول غير صحيحة.");
         playTargetLock();
         setIsLoading(false);
         return;
@@ -290,6 +305,7 @@ function LoginForm() {
                 <input
                   type="text"
                   required
+                  autoComplete="name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="مثال: أحمد محمد علي"
@@ -307,6 +323,7 @@ function LoginForm() {
                 <input
                   type="email"
                   required
+                  autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="example@gmail.com"
@@ -321,6 +338,7 @@ function LoginForm() {
                   <input
                     type="tel"
                     required
+                    autoComplete="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="01xxxxxxxxx"
@@ -330,10 +348,11 @@ function LoginForm() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">كلمة المرور</label>
+                  <label className="block text-xs font-medium text-slate-300 mb-1.5">كلمة المرور الجديدة</label>
                   <input
                     type="password"
                     required
+                    autoComplete="new-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
@@ -388,6 +407,7 @@ function LoginForm() {
                 <input
                   type="text"
                   required
+                  autoComplete="username"
                   value={loginIdentifier}
                   onChange={(e) => setLoginIdentifier(e.target.value)}
                   placeholder="أدخل الجيميل أو رقم الهاتف المسجل"
@@ -397,10 +417,19 @@ function LoginForm() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">كلمة المرور</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-medium text-slate-300">كلمة المرور الحالية</label>
+                  <a
+                    href="/forgot-password"
+                    className="text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
+                  >
+                    نسيت كلمة المرور؟
+                  </a>
+                </div>
                 <input
                   type="password"
                   required
+                  autoComplete="current-password"
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                   placeholder="••••••••"
@@ -408,6 +437,29 @@ function LoginForm() {
                   dir="ltr"
                 />
               </div>
+
+              {/* حقل المصادقة الثنائية 2FA إذا كان مطلوباً */}
+              {is2FaRequired && (
+                <div className="p-3.5 bg-amber-950/40 border border-amber-500/40 rounded-xl space-y-2 animate-fadeIn">
+                  <label className="block text-xs font-bold text-amber-300">
+                    رمز المصادقة الثنائية (2FA Code):
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    autoComplete="one-time-code"
+                    value={twoFactorCode}
+                    onChange={(e) => setTwoFactorCode(e.target.value)}
+                    placeholder="أدخل رمز التحقق المكون من 6 أرقام"
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-amber-500/50 rounded-xl text-xs text-white font-mono text-center tracking-widest focus:outline-none focus:border-amber-400"
+                    maxLength={8}
+                    dir="ltr"
+                  />
+                  <p className="text-[10px] text-amber-400/80">
+                    تم إرسال رمز التحقق إلى وسيلة المصادقة المعتمدة لحسابك.
+                  </p>
+                </div>
+              )}
 
               <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-[11px] text-slate-400 flex items-start gap-2">
                 <Lock className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />

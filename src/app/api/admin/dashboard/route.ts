@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { requireAdmin } from "@/lib/auth-guard";
 
 export async function GET() {
   try {
+    const { error } = await requireAdmin();
+    if (error) return error;
+
     // 1. إحصائيات الطلاب
     const totalStudents = await prisma.user.count({ where: { role: "STUDENT" } });
     const lockedStudents = await prisma.user.count({ where: { status: "LOCKED" } });

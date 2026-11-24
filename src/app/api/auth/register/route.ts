@@ -2,6 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import prisma from "@/lib/prisma";
 
+// التحقق من صيغة الهاتف المصري: 010, 011, 012, 015
+const EGYPT_PHONE_REGEX = /^01[0125][0-9]{8}$/;
+
+// التحقق من صيغة البريد الإلكتروني
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// تنظيف المدخلات من أي أكواد خبيثة (Sanitization)
+function sanitizeText(input: string): string {
+  return input
+    .replace(/[<>]/g, "") // إزالة وسوم HTML لمنع XSS
+    .trim();
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -15,22 +28,54 @@ export async function POST(req: NextRequest) {
       deviceFingerprint,
     } = body;
 
-    // 1. التحقق من صحة المدخلات
+    // 1. التحقق من وجود الحقول الإلزامية
     if (!name || !email || !phone || !password || !deviceFingerprint) {
       return NextResponse.json(
-        { error: "يرجى استكمال جميع البيانات المطلوبة (الاسم، الجيميل، الهاتف، كلمة المرور)" },
+        {
+          error:
+            "يرجى استكمال جميع البيانات المطلوبة (الاسم، الجيميل، الهاتف، كلمة المرور)",
+        },
         { status: 400 }
       );
     }
 
+    const cleanName = sanitizeText(name);
     const cleanEmail = email.toLowerCase().trim();
     const cleanPhone = phone.trim();
+    const cleanPhoneType = sanitizeText(phoneType || "هاتف محمول");
+    const cleanFingerprint = sanitizeText(deviceFingerprint);
+
+    // التحقق من طول الاسم
+    if (cleanName.length < 3 || cleanName.length > 80) {
+      return NextResponse.json(
+        { error: "الاسم يجب أن يكون بين 3 و 80 حرفاً." },
+        { status: 400 }
+      );
+    }
+
+    // التحقق من صحة البريد الإلكتروني
+    if (!EMAIL_REGEX.test(cleanEmail)) {
+      return NextResponse.json(
+        { error: "صيغة البريد الإلكتروني غير صحيحة." },
+        { status: 400 }
+      );
+    }
 
     // التحقق من صيغة الهاتف المصري
-    const egyptianPhoneRegex = /^01[0125][0-9]{8}$/;
-    if (!egyptianPhoneRegex.test(cleanPhone)) {
+    if (!EGYPT_PHONE_REGEX.test(cleanPhone)) {
       return NextResponse.json(
-        { error: "رقم الهاتف غير صحيح. يجب أن يكون رقم مصري يبدأ بـ 010 أو 011 أو 012 أو 015 مكون من 11 رقم." },
+        {
+          error:
+            "رقم الهاتف غير صحيح. يجب أن يكون رقم مصري يبدأ بـ 010 أو 011 أو 012 أو 015 مكون من 11 رقم.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // التحقق من قوة كلمة المرور (على الأقل 8 أحرف)
+    if (typeof password !== "string" || password.length < 8) {
+      return NextResponse.json(
+        { error: "كلمة المرور يجب ألا تقل عن 8 أحرف وأرقام لضمان أمان حسابك." },
         { status: 400 }
       );
     }
@@ -52,7 +97,10 @@ export async function POST(req: NextRequest) {
     });
     if (existingByPhone) {
       return NextResponse.json(
-        { error: "رقم الهاتف هذا مسجل بالفعل لطالب آخر. الحساب مرتبط برقم هاتف واحد فقط." },
+        {
+          error:
+            "رقم الهاتف هذا مسجل بالفعل لطالب آخر. الحساب مرتبط برقم هاتف واحد فقط.",
+        },
         { status: 400 }
       );
     }
@@ -61,21 +109,20 @@ export async function POST(req: NextRequest) {
     const forwarded = req.headers.get("x-forwarded-for");
     const ipAddress = forwarded ? forwarded.split(",")[0].trim() : "127.0.0.1";
     const userAgent = req.headers.get("user-agent") || "متصفح غير معروف";
-    const detectedPhoneType = phoneType?.trim() || "هاتف محمول";
 
-    // 5. تشفير كلمة المرور
-    const passwordHash = await bcrypt.hash(password, 10);
+    // 5. تشفير كلمة المرور بـ Salt قوي (12 جولة bcrypt)
+    const passwordHash = await bcrypt.hash(password, 12);
 
-    // 6. إنشاء حساب الطالب وتخزين الجيميل ونوع الفون وبصمة العتاد بشكل دائم
+    // 6. إنشاء حساب الطالب
     const user = await prisma.user.create({
       data: {
-        name: name.trim(),
+        name: cleanName,
         email: cleanEmail,
         initialEmail: cleanEmail,
         phone: cleanPhone,
         initialPhone: cleanPhone,
-        phoneType: detectedPhoneType,
-        initialFingerprint: deviceFingerprint,
+        phoneType: cleanPhoneType,
+        initialFingerprint: cleanFingerprint,
         passwordHash,
         academicLevelId: academicLevelId || null,
         role: "STUDENT",
@@ -84,9 +131,9 @@ export async function POST(req: NextRequest) {
         phoneVerified: new Date(),
         devices: {
           create: {
-            deviceFingerprint,
-            deviceName: detectedPhoneType,
-            deviceModel: detectedPhoneType,
+            deviceFingerprint: cleanFingerprint,
+            deviceName: cleanPhoneType,
+            deviceModel: cleanPhoneType,
             ipAddress,
             userAgent,
             isApproved: true,
@@ -96,36 +143,35 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // 7. توثيق عملية التسجيل وحفظ نوع الجهاز في سجل التدقيق (AuditLog)
+    // 7. توثيق عملية التسجيل دون تخزين كلمات المرور
     await prisma.auditLog.create({
       data: {
         userId: user.id,
-        action: "ACCOUNT_REGISTERED",
+        action: "STUDENT_REGISTRATION",
         attemptedEmail: cleanEmail,
         attemptedPhone: cleanPhone,
-        attemptedFingerprint: deviceFingerprint,
-        attemptedDeviceModel: detectedPhoneType,
+        attemptedFingerprint: cleanFingerprint,
+        attemptedDeviceModel: cleanPhoneType,
         ipAddress,
         userAgent,
-        reason: `تسجيل حساب جديد - تم توثيق وحفظ نوع الفون (${detectedPhoneType}) والجيميل الأصلي (${cleanEmail}) ورقم الهاتف (${cleanPhone})`,
+        reason: "تسجيل حساب طالب جديد بنجاح",
       },
     });
 
     return NextResponse.json({
       success: true,
-      message: "تم إنشاء الحساب بنجاح وربط بيانات الفون والجيميل الخاصة بك",
+      message: "تم إنشاء الحساب بنجاح",
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
         phone: user.phone,
-        phoneType: user.phoneType,
       },
     });
-  } catch (err: any) {
-    console.error("Register API Error:", err);
+  } catch (error: any) {
+    console.error("Registration POST Error:", error?.message || error);
     return NextResponse.json(
-      { error: "حدث خطأ غير متوقع أثناء تسجيل الحساب. يرجى المحاولة لاحقاً." },
+      { error: "حدث خطأ غير متوقع أثناء معالجة طلب التسجيل." },
       { status: 500 }
     );
   }
