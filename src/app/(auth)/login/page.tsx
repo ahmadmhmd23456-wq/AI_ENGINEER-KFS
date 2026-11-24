@@ -219,7 +219,7 @@ function LoginForm() {
 
         <div className="flex items-center gap-2 text-xs font-medium text-emerald-400 bg-emerald-950/60 border border-emerald-800/40 px-3 py-1.5 rounded-full">
           <ShieldCheck className="w-4 h-4" />
-          <span>ربط أمني بنوع الهاتف والجيميل</span>
+          <span>منصة تعليمية موثقة وآمنة</span>
         </div>
       </header>
 
@@ -282,26 +282,6 @@ function LoginForm() {
             </div>
           )}
 
-          {/* كارت كشف وتوثيق نوع الهاتف تلقائياً (Device & Phone Hardware Badge) */}
-          <div className="mb-6 p-3.5 bg-slate-950/80 border border-blue-500/30 rounded-2xl flex items-center justify-between gap-3 shadow-inner">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-600/15 border border-blue-500/30 text-blue-400 flex items-center justify-center flex-shrink-0">
-                <Smartphone className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-[10px] text-slate-400 block font-mono">نوع الفون المكتشف:</span>
-                <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <span>{phoneType || deviceInfo?.deviceModel || "جاري الكشف..."}</span>
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                </span>
-              </div>
-            </div>
-
-            <span className="text-[10px] font-mono bg-blue-950/60 text-blue-400 border border-blue-800/40 px-2 py-0.5 rounded-md">
-              موثق أمنياً
-            </span>
-          </div>
-
           {/* 1. نموذج إنشاء حساب جديد */}
           {mode === "REGISTER" && (
             <form onSubmit={handleRegister} className="space-y-4">
@@ -363,40 +343,25 @@ function LoginForm() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">الفرقة / الدفعة الدراسية</label>
-                  <select
-                    value={academicLevelId}
-                    onChange={(e) => setAcademicLevelId(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
-                  >
-                    {levels.map((lvl) => (
-                      <option key={lvl.id} value={lvl.id}>
-                        {lvl.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                    تأكيد موديل الفون المسجل
-                  </label>
-                  <input
-                    type="text"
-                    value={phoneType}
-                    onChange={(e) => setPhoneType(e.target.value)}
-                    placeholder="مثال: iPhone 14 Pro أو Samsung A54"
-                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">الفرقة / الدفعة الدراسية</label>
+                <select
+                  value={academicLevelId}
+                  onChange={(e) => setAcademicLevelId(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                >
+                  {levels.map((lvl) => (
+                    <option key={lvl.id} value={lvl.id}>
+                      {lvl.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="p-3 bg-blue-950/30 border border-blue-800/40 rounded-xl text-[11px] text-slate-300 flex items-start gap-2">
                 <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
                 <span>
-                  نظام الأمان يقوم بتسجيل <strong>الجيميل ونوع هاتفك الحالي</strong> في ملفك.. في حال محاولة فتح الحساب من هاتف آخر أو بجيميل مختلف سيتم حظر الحساب وإشعار الإدارة فوراً.
+                  تسجيل حسابك يتيح لك الوصول الفوري للمحاضرات والشيتات وبنك الأسئلة والامتحانات التفاعلية.
                 </span>
               </div>
 
@@ -407,7 +372,7 @@ function LoginForm() {
                 onClick={playCyberClick}
                 className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-600/30 disabled:opacity-50 hover:scale-[1.01] active:scale-[0.99]"
               >
-                <span>{isLoading ? "جاري إنشاء الحساب وتوثيق الهاتف..." : "إنشاء الحساب وتوثيق بيانات الهاتف"}</span>
+                <span>{isLoading ? "جاري إنشاء الحساب..." : "إنشاء الحساب وبدء التعلم"}</span>
                 <ArrowLeft className="w-4 h-4" />
               </button>
             </form>
@@ -447,7 +412,7 @@ function LoginForm() {
               <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-[11px] text-slate-400 flex items-start gap-2">
                 <Lock className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
                 <span>
-                  يتم التحقق تلقائياً من مطابقة <strong>نوع الهاتف وبصمة العتاد</strong> المسجلة لحسابك قبل السماح بالدخول.
+                  تسجيل دخول آمن ومشفر لحماية حسابك ومحتوى محاضراتك التعليمية.
                 </span>
               </div>
 
@@ -463,59 +428,6 @@ function LoginForm() {
               </button>
             </form>
           )}
-
-          {/* خط فاصل */}
-          <div className="relative flex items-center justify-center my-6">
-            <div className="border-t border-slate-800 w-full" />
-            <span className="bg-slate-900 px-3 text-[10px] text-slate-500 uppercase tracking-wider font-mono">
-              تجربة سريعة وفورية للمعاينة
-            </span>
-          </div>
-
-          {/* أزرار التجربة السريعة للأدمن والطلاب */}
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => {
-                playCyberClick();
-                handleDemoLogin("eng.teacher@gmail.com", "ADMIN");
-              }}
-              onMouseEnter={playCyberHover}
-              disabled={isLoading}
-              className="w-full py-2.5 px-3.5 bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/30 text-blue-400 rounded-xl text-xs font-semibold flex items-center justify-between transition-all"
-            >
-              <span>دخول سريع كأدمن (د. محمد - إدارة المنصة)</span>
-              <ArrowLeft className="w-3.5 h-3.5" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                playCyberClick();
-                handleDemoLogin("ahmed.student@gmail.com", "STUDENT");
-              }}
-              onMouseEnter={playCyberHover}
-              disabled={isLoading}
-              className="w-full py-2.5 px-3.5 bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-semibold flex items-center justify-between transition-all"
-            >
-              <span>دخول سريع كطالب نشط (أحمد - هاتف موثق)</span>
-              <ArrowLeft className="w-3.5 h-3.5" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                playCyberClick();
-                handleDemoLogin("omar.hassan@gmail.com", "STUDENT");
-              }}
-              onMouseEnter={playCyberHover}
-              disabled={isLoading}
-              className="w-full py-2.5 px-3.5 bg-red-600/10 hover:bg-red-600/20 border border-red-500/30 text-red-400 rounded-xl text-xs font-semibold flex items-center justify-between transition-all"
-            >
-              <span>تجربة قفل الحساب الأمني (عمر - هاتف غير مصرح)</span>
-              <Lock className="w-3.5 h-3.5" />
-            </button>
-          </div>
         </div>
       </main>
 
