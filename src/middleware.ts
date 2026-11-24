@@ -10,19 +10,21 @@ export function middleware(request: NextRequest) {
   const isWebhook = pathname.startsWith("/api/webhooks");
   const isNextAuth = pathname.startsWith("/api/auth");
 
-  if (isStateChanging && !isWebhook) {
+  if (isStateChanging && !isWebhook && !isNextAuth) {
     const origin = request.headers.get("origin");
     const host = request.headers.get("host");
+    const forwardedHost = request.headers.get("x-forwarded-host");
 
     if (origin && host) {
       try {
         const originUrl = new URL(origin);
         // التحقق من تطابق الـ Host مع الـ Origin لمنع هجمات CSRF الخارجية
-        if (originUrl.host !== host) {
-          // السماح في حالة الدومين الموثق للـ tunnel أو localhost
+        if (originUrl.host !== host && originUrl.host !== forwardedHost) {
+          // السماح في حالة الدومين الموثق للـ tunnel أو localhost أو vercel.app
           const isAllowedDomain =
             originUrl.host.includes("localhost") ||
             originUrl.host.includes("trycloudflare.com") ||
+            originUrl.host.includes("vercel.app") ||
             originUrl.host.includes("127.0.0.1");
 
           if (!isAllowedDomain) {
