@@ -27,6 +27,8 @@ import {
   Check,
   Layers,
   Settings2,
+  Copy,
+  MessageCircle,
 } from "lucide-react";
 import {
   playCyberHover,
@@ -130,10 +132,9 @@ export default function StudentCoursesPage() {
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
   const [isSavingDept, setIsSavingDept] = useState(false);
 
-  // حالة مودال الدفع
+  // حالة مودال طلب تفعيل الكورس
   const [selectedSubjectToBuy, setSelectedSubjectToBuy] = useState<any | null>(null);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"WALLET" | "CARD" | "INSTAPAY">("WALLET");
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [copiedPhone, setCopiedPhone] = useState(false);
 
   const fetchCourses = (deptToFetch?: string) => {
     setLoading(true);
@@ -184,43 +185,6 @@ export default function StudentCoursesPage() {
     } finally {
       setIsSavingDept(false);
       setIsDeptModalOpen(false);
-    }
-  };
-
-  const handleCheckout = async (isDemoInstant: boolean = false) => {
-    if (!selectedSubjectToBuy) return;
-    setIsProcessingPayment(true);
-
-    try {
-      const res = await fetch("/api/purchases/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subjectId: selectedSubjectToBuy.id,
-          paymentMethod: selectedPaymentMethod,
-          isDemoInstantPay: isDemoInstant,
-        }),
-      });
-
-      const json = await res.json();
-      if (!res.ok) {
-        alert(json.error || "فشل إتمام المعاملة");
-        setIsProcessingPayment(false);
-        return;
-      }
-
-      if (json.isInstantUnlocked) {
-        playSuccessChime();
-        alert("🎉 تم تأكيد الاشتراك بنجاح! تم فتح المادة على حسابك.");
-        setSelectedSubjectToBuy(null);
-        fetchCourses();
-      } else if (json.paymentUrl) {
-        window.location.href = json.paymentUrl;
-      }
-    } catch {
-      alert("حدث خطأ أثناء الاتصال ببوابة الدفع");
-    } finally {
-      setIsProcessingPayment(false);
     }
   };
 
@@ -520,8 +484,8 @@ export default function StudentCoursesPage() {
                     onMouseEnter={playCyberHover}
                     className="py-2.5 px-5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-600/30 whitespace-nowrap hover:scale-105 active:scale-95"
                   >
-                    <span>اشترك الآن</span>
-                    <CreditCard className="w-4 h-4" />
+                    <span>طلب تفعيل الكورس</span>
+                    <Lock className="w-4 h-4" />
                   </button>
                 )}
               </div>
@@ -615,103 +579,120 @@ export default function StudentCoursesPage() {
         </div>
       )}
 
-      {/* مودال الدفع والاشتراك السريع */}
+      {/* مودال طلب تفعيل الكورس يدوياً عن طريق الأدمن م/ أحمد */}
       {selectedSubjectToBuy && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm anim-video-modal">
-          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-md w-full p-6 shadow-2xl relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm anim-video-modal" dir="rtl">
+          <div className="bg-slate-900 border border-slate-700/80 rounded-3xl max-w-md w-full p-6 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-600/10 rounded-full blur-3xl pointer-events-none" />
+
             <button
-              onClick={() => setSelectedSubjectToBuy(null)}
-              className="absolute top-4 left-4 text-slate-400 hover:text-white"
+              onClick={() => {
+                playCyberClick();
+                setSelectedSubjectToBuy(null);
+              }}
+              className="absolute top-4 left-4 p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800/60 transition-all"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="text-center mb-6">
-              <div className="w-12 h-12 rounded-2xl bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center mx-auto mb-3">
-                <CreditCard className="w-6 h-6" />
+            {/* رأس النافذة */}
+            <div className="text-center mb-5">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mx-auto mb-3 shadow-lg shadow-emerald-500/10">
+                <Lock className="w-7 h-7" />
               </div>
-              <h3 className="text-lg font-bold text-white">تأكيد الاشتراك في المادة</h3>
+              <h3 className="text-lg font-bold text-white">طلب تفعيل الكورس</h3>
               <p className="text-xs text-slate-400 mt-1">{selectedSubjectToBuy.name}</p>
-              <div className="text-2xl font-bold font-mono text-emerald-400 mt-2">
-                {selectedSubjectToBuy.price} ج.م
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 mt-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono font-bold text-sm">
+                <span>رسوم الاشتراك:</span>
+                <span>{selectedSubjectToBuy.price} ج.م</span>
               </div>
             </div>
 
-            {/* طرق الدفع */}
-            <div className="space-y-2 mb-6">
-              <label
-                onClick={() => setSelectedPaymentMethod("WALLET")}
-                className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
-                  selectedPaymentMethod === "WALLET"
-                    ? "bg-blue-600/15 border-blue-500 text-white"
-                    : "bg-slate-950/60 border-slate-800 text-slate-300"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Smartphone className="w-4 h-4 text-emerald-400" />
-                  <div>
-                    <div className="font-bold">محفظة إلكترونية (فودافون كاش / أورنج / وي / اتصالات)</div>
-                    <div className="text-[10px] text-slate-400">دفع فوري وآمن بخصم مباشر</div>
-                  </div>
-                </div>
-                <input type="radio" checked={selectedPaymentMethod === "WALLET"} readOnly />
-              </label>
-
-              <label
-                onClick={() => setSelectedPaymentMethod("INSTAPAY")}
-                className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
-                  selectedPaymentMethod === "INSTAPAY"
-                    ? "bg-blue-600/15 border-blue-500 text-white"
-                    : "bg-slate-950/60 border-slate-800 text-slate-300"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Zap className="w-4 h-4 text-indigo-400" />
-                  <div>
-                    <div className="font-bold">انستا باي (InstaPay)</div>
-                    <div className="text-[10px] text-slate-400">تحويل بنكي لحظي لحساب المدرس المعتمد</div>
-                  </div>
-                </div>
-                <input type="radio" checked={selectedPaymentMethod === "INSTAPAY"} readOnly />
-              </label>
-
-              <label
-                onClick={() => setSelectedPaymentMethod("CARD")}
-                className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
-                  selectedPaymentMethod === "CARD"
-                    ? "bg-blue-600/15 border-blue-500 text-white"
-                    : "bg-slate-950/60 border-slate-800 text-slate-300"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <CreditCard className="w-4 h-4 text-blue-400" />
-                  <div>
-                    <div className="font-bold">بطاقة بنكية (فيزا / ماستركارد / ميزة)</div>
-                    <div className="text-[10px] text-slate-400">بوابة دفع آمنة ومشفرة عبر Paymob</div>
-                  </div>
-                </div>
-                <input type="radio" checked={selectedPaymentMethod === "CARD"} readOnly />
-              </label>
+            {/* تنبيه وتوضيح سياسة التفعيل */}
+            <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs leading-relaxed mb-4">
+              <div className="font-bold flex items-center gap-1.5 mb-1 text-amber-200">
+                <span>⚠️ تنبيه هـام:</span>
+              </div>
+              <div>
+                تفعيل الكورس يتم حصرياً ويدوياً عن طريق <span className="font-bold text-white">م/ أحمد</span> بعد تأكيد التحويل لضمان أمان حسابك.
+              </div>
             </div>
 
-            {/* أزرار الدفع */}
+            {/* بيانات التحويل (فودافون كاش / انستا باي) */}
+            <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 mb-5 space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400">طريقة التحويل:</span>
+                <span className="font-bold text-slate-200 flex items-center gap-1">
+                  <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>فودافون كاش / انستا باي</span>
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400">اسم المستلم المعتمد:</span>
+                <span className="font-bold text-white">م/ أحمد محمد</span>
+              </div>
+
+              <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] text-slate-400">رقم فودافون كاش / انستا باي:</div>
+                  <div className="text-base font-bold font-mono text-emerald-400 tracking-wider">
+                    01065375309
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText("01065375309");
+                    setCopiedPhone(true);
+                    playSuccessChime();
+                    setTimeout(() => setCopiedPhone(false), 2500);
+                  }}
+                  className="py-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition-all hover:scale-105 active:scale-95"
+                >
+                  {copiedPhone ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="text-emerald-400">تم النسخ!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 text-slate-400" />
+                      <span>نسخ الرقم</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* زر التواصل عبر الواتساب */}
             <div className="space-y-2">
               <button
                 type="button"
-                onClick={() => handleCheckout(false)}
-                disabled={isProcessingPayment}
-                className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-600/25 disabled:opacity-50"
+                onClick={() => {
+                  playCyberClick();
+                  const studentName = data?.user?.name || "";
+                  const studentPhone = data?.user?.phone || "";
+                  const msg = `السلام عليكم م/ أحمد، أرغب في تفعيل كورس (${selectedSubjectToBuy.name}) على منصة هندسة.\nاسمي: ${studentName}\nرقم هاتفي: ${studentPhone}`;
+                  const url = `https://wa.me/201065375309?text=${encodeURIComponent(msg)}`;
+                  window.open(url, "_blank");
+                }}
+                className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all hover:scale-[1.02] active:scale-[0.98]"
               >
-                {isProcessingPayment ? "جاري تحويلك لبوابة الدفع..." : "المتابعة للدفع عبر Paymob"}
+                <MessageCircle className="w-4 h-4 fill-white" />
+                <span>إرسال إيصال التحويل عبر الواتساب لتفعيل الكورس</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => handleCheckout(true)}
-                disabled={isProcessingPayment}
-                className="w-full py-2.5 bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all"
+                onClick={() => {
+                  playCyberClick();
+                  setSelectedSubjectToBuy(null);
+                }}
+                className="w-full py-2.5 bg-slate-800/80 hover:bg-slate-800 text-slate-300 rounded-xl text-xs font-semibold transition-all"
               >
-                <span>محاكاة دفع فوري ناجح (بيئة التطوير)</span>
+                إغلاق
               </button>
             </div>
           </div>

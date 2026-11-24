@@ -30,7 +30,7 @@ export async function GET(
 
       if (!purchase) {
         return NextResponse.json(
-          { error: "يجب شراء المادة أولاً للوصول إلى هذا المحتوى" },
+          { error: "هذا الكورس مغلق، يتطلب تفعيل الاشتراك يدوياً من قِبل م/ أحمد" },
           { status: 403 }
         );
       }

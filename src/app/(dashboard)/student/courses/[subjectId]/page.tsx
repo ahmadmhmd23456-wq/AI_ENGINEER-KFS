@@ -16,6 +16,7 @@ import {
   BookOpen,
   Calendar,
   RefreshCw,
+  MessageCircle,
 } from "lucide-react";
 import SecureVideoPlayer from "@/components/video/SecureVideoPlayer";
 import SecurePdfViewer from "@/components/pdf/SecurePdfViewer";
@@ -82,17 +83,51 @@ export default function SubjectContentPage({
   }
 
   if (error) {
+    const studentName = session?.user?.name || "";
+    const studentPhone = (session?.user as any)?.phone || "";
+    const whatsappMsg = `السلام عليكم م/ أحمد، أرغب في تفعيل كورس على منصة هندسة.\nاسمي: ${studentName}\nرقم هاتفي: ${studentPhone}`;
+    const whatsappUrl = `https://wa.me/201065375309?text=${encodeURIComponent(whatsappMsg)}`;
+
     return (
-      <div className="max-w-md mx-auto my-12 bg-slate-900 border border-red-500/30 rounded-3xl p-8 text-center" dir="rtl">
-        <Lock className="w-12 h-12 text-red-500 mx-auto mb-4" />
-        <h2 className="text-lg font-bold text-white mb-2">المحتوى غير متاح</h2>
-        <p className="text-xs text-slate-400 mb-6">{error}</p>
-        <button
-          onClick={() => router.push("/student/courses")}
-          className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold"
-        >
-          العودة لقائمة المواد
-        </button>
+      <div className="max-w-md mx-auto my-12 bg-slate-900 border border-slate-700/80 rounded-3xl p-6 sm:p-8 text-center shadow-2xl relative overflow-hidden" dir="rtl">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-600/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto mb-4">
+          <Lock className="w-7 h-7" />
+        </div>
+
+        <h2 className="text-lg font-bold text-white mb-2">الكورس مغلق حالياً</h2>
+        <p className="text-xs text-slate-300 leading-relaxed mb-4">
+          هذا المحتوى يتطلب تفعيل الاشتراك يدوياً من قِبل <span className="font-bold text-white">م/ أحمد</span> لضمان حقوقك وأمان حسابك.
+        </p>
+
+        <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-400 mb-5">
+          <div>رقم فودافون كاش / انستا باي للتحويل:</div>
+          <div className="text-emerald-400 font-mono font-bold text-sm mt-1">01065375309</div>
+        </div>
+
+        <div className="space-y-2">
+          <a
+            href={whatsappUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={playCyberClick}
+            className="w-full py-3 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition-all hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <MessageCircle className="w-4 h-4 fill-white" />
+            <span>طلب التفعيل من م/ أحمد عبر الواتساب</span>
+          </a>
+
+          <button
+            onClick={() => {
+              playCyberClick();
+              router.push("/student/courses");
+            }}
+            className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-all"
+          >
+            العودة لقائمة المواد
+          </button>
+        </div>
       </div>
     );
   }
