@@ -21,6 +21,7 @@ import {
   Edit2,
 } from "lucide-react";
 import { extractYoutubeId, formatDurationArabic } from "@/lib/video-helper";
+import { probeYoutubeDurationClient } from "@/lib/youtube-client";
 
 export default function AdminSubjectContentPage({
   params,
@@ -193,15 +194,41 @@ export default function AdminSubjectContentPage({
           setDetectedVideoTitle(data.title);
         }
 
-        if (data?.durationSeconds && data.durationSeconds > 0) {
-          const sec = data.durationSeconds;
-          setDetectedDurationSeconds(sec);
+        let resolvedSec: number | null =
+          data?.durationSeconds && data.durationSeconds > 0 ? data.durationSeconds : null;
+
+        // بديل مضمون عبر متصفح المستخدم في حال حظرت سحابة الخادم قراءة المدة من يوتيوب
+        if (!resolvedSec && ytId) {
+          resolvedSec = await probeYoutubeDurationClient(ytId);
+        }
+
+        if (cancelled) return;
+
+        if (resolvedSec && resolvedSec > 0) {
+          setDetectedDurationSeconds(resolvedSec);
           if (!manualDurationEdited) {
-            setVideoDuration(sec < 60 ? String(Number((sec / 60).toFixed(1))) : String(Math.round(sec / 60)));
+            setVideoDuration(
+              resolvedSec < 60
+                ? String(Number((resolvedSec / 60).toFixed(1)))
+                : String(Math.round(resolvedSec / 60))
+            );
           }
         }
       } catch {
-        // تجاهل خطأ الشبكة
+        // محاولة أخيرة عبر المتصفح إذا كان رابط يوتيوب
+        if (ytId && !cancelled) {
+          const fallbackSec = await probeYoutubeDurationClient(ytId);
+          if (!cancelled && fallbackSec && fallbackSec > 0) {
+            setDetectedDurationSeconds(fallbackSec);
+            if (!manualDurationEdited) {
+              setVideoDuration(
+                fallbackSec < 60
+                  ? String(Number((fallbackSec / 60).toFixed(1)))
+                  : String(Math.round(fallbackSec / 60))
+              );
+            }
+          }
+        }
       } finally {
         if (!cancelled) setIsDetectingDuration(false);
       }
@@ -211,7 +238,7 @@ export default function AdminSubjectContentPage({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [activeLessonForVideo, videoUrlOrId, videoProvider, manualDurationEdited]);
+  }, [activeLessonForVideo, videoUrlOrId, videoProvider]);
 
   const handleAddVideo = async (e: React.FormEvent) => {
     e.preventDefault();
