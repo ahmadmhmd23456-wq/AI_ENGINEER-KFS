@@ -21,8 +21,9 @@ export default function SecureVideoPlayer({
   const [error, setError] = useState<string | null>(null);
   const [lastPosition, setLastPosition] = useState(0);
 
-  // إحداثيات العلامة المائية المتحركة
-  const [watermarkPos, setWatermarkPos] = useState({ top: "20%", left: "30%" });
+  // مراجع المشغل والعلامة المائية للحركة الانسيابية
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const watermarkRef = useRef<HTMLDivElement | null>(null);
 
   // جلب الرابط الموقّع ومكان التوقف
   useEffect(() => {
@@ -50,17 +51,55 @@ export default function SecureVideoPlayer({
       });
   }, [videoId]);
 
-  // تحريك العلامة المائية عشوائياً كل 4 ثوانٍ
+  // تحريك العلامة المائية بانسيابية وهدوء مستمر داخل المشغل بدون قفزات
   useEffect(() => {
-    const interval = setInterval(() => {
-      // توليد إحداثيات عشوائية داخل حدود المشغل لتفادي القص
-      const top = Math.floor(10 + Math.random() * 75) + "%";
-      const left = Math.floor(5 + Math.random() * 70) + "%";
-      setWatermarkPos({ top, left });
-    }, 4000);
+    if (loading || error) return;
+    const container = containerRef.current;
+    const wm = watermarkRef.current;
+    if (!container || !wm) return;
 
-    return () => clearInterval(interval);
-  }, []);
+    let rafId = 0;
+    let x = 24;
+    let y = 24;
+    // سرعة هادئة وناعمة (بكسل/ثانية) لتنزلق العلامة براحة دون إزعاج الطالب
+    let vx = 18;
+    let vy = 12;
+    let lastTime = performance.now();
+
+    const step = (now: number) => {
+      const dt = Math.min(0.05, Math.max(0, (now - lastTime) / 1000));
+      lastTime = now;
+
+      const padding = 12;
+      const maxX = Math.max(padding, container.clientWidth - wm.offsetWidth - padding);
+      const maxY = Math.max(padding, container.clientHeight - wm.offsetHeight - padding - 36);
+
+      x += vx * dt;
+      y += vy * dt;
+
+      if (x <= padding) {
+        x = padding;
+        vx = Math.abs(vx);
+      } else if (x >= maxX) {
+        x = maxX;
+        vx = -Math.abs(vx);
+      }
+
+      if (y <= padding) {
+        y = padding;
+        vy = Math.abs(vy);
+      } else if (y >= maxY) {
+        y = maxY;
+        vy = -Math.abs(vy);
+      }
+
+      wm.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) rotate(-2deg)`;
+      rafId = requestAnimationFrame(step);
+    };
+
+    rafId = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafId);
+  }, [loading, error]);
 
   // منع كليك يمين والاختصارات
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -91,6 +130,7 @@ export default function SecureVideoPlayer({
 
   return (
     <div
+      ref={containerRef}
       onContextMenu={handleContextMenu}
       className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-slate-800 select-none group"
     >
@@ -117,14 +157,15 @@ export default function SecureVideoPlayer({
         )
       )}
 
-      {/* العلامة المائية المتحركة الشفافة (Dynamic Floating Watermark) */}
+      {/* العلامة المائية المتحركة الشفافة (Smooth Gliding Watermark) */}
       <div
+        ref={watermarkRef}
         style={{
-          top: watermarkPos.top,
-          left: watermarkPos.left,
-          transition: "all 1.2s cubic-bezier(0.4, 0, 0.2, 1)",
+          left: 0,
+          top: 0,
+          transform: "translate3d(24px, 24px, 0) rotate(-2deg)",
         }}
-        className="absolute pointer-events-none z-30 opacity-35 bg-black/40 backdrop-blur-[2px] px-2.5 py-1 rounded-lg border border-white/10 text-[11px] font-mono text-white flex items-center gap-1.5 shadow-sm transform -rotate-2"
+        className="absolute pointer-events-none z-30 opacity-35 bg-black/40 backdrop-blur-[2px] px-2.5 py-1 rounded-lg border border-white/10 text-[11px] font-mono text-white flex items-center gap-1.5 shadow-sm will-change-transform"
       >
         <Shield className="w-3 h-3 text-blue-400" />
         <span className="font-bold">{studentName}</span>
