@@ -10,6 +10,7 @@ import {
   recordFailedLogin,
   recordSuccessfulLogin,
 } from "./rate-limiter";
+import { normalizeEgyptianPhone } from "./arabic-search";
 
 const isProduction =
   process.env.NODE_ENV === "production" ||
@@ -80,7 +81,9 @@ export const authOptions: NextAuthOptions = {
           throw new Error("يرجى إدخال الجيميل أو الهاتف وكلمة المرور.");
         }
 
-        const email = credentials.email.toLowerCase().trim();
+        const rawIdentifier = (credentials.email || "").trim();
+        const email = rawIdentifier.toLowerCase();
+        const normalizedPhone = normalizeEgyptianPhone(rawIdentifier);
         const fingerprint = credentials.deviceFingerprint || "unknown-fp";
         const currentPhoneType = credentials.phoneType || "هاتف محمول";
         const ipAddress = credentials.ipAddress || "127.0.0.1";
@@ -96,7 +99,11 @@ export const authOptions: NextAuthOptions = {
 
         const user = await prisma.user.findFirst({
           where: {
-            OR: [{ email }, { phone: email }],
+            OR: [
+              { email },
+              { phone: email },
+              ...(normalizedPhone ? [{ phone: normalizedPhone }] : []),
+            ],
           },
           include: {
             devices: true,

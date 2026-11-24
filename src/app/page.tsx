@@ -10,6 +10,8 @@ import {
   CreditCard,
   ArrowLeft,
   Sparkles,
+  LogIn,
+  UserPlus,
 } from "lucide-react";
 import {
   playCyberHover,
@@ -31,15 +33,27 @@ export default function HomePage() {
           </div>
         </div>
 
-        <Link
-          href="/login?mode=login"
-          onMouseEnter={playCyberHover}
-          onClick={playCyberClick}
-          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-600/25 flex items-center gap-2 hover:scale-105 active:scale-95"
-        >
-          <span>تسجيل الدخول</span>
-          <ArrowLeft className="w-4 h-4" />
-        </Link>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Link
+            href="/login?mode=register"
+            onMouseEnter={playCyberHover}
+            onClick={playCyberClick}
+            className="px-3.5 py-2 sm:px-4 sm:py-2.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-slate-700/80 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 hover:scale-105 active:scale-95 hover:text-white"
+          >
+            <UserPlus className="w-3.5 h-3.5 text-blue-400" />
+            <span>إنشاء حساب</span>
+          </Link>
+
+          <Link
+            href="/login?mode=login"
+            onMouseEnter={playCyberHover}
+            onClick={playCyberClick}
+            className="px-3.5 py-2 sm:px-5 sm:py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-600/25 flex items-center gap-1.5 hover:scale-105 active:scale-95"
+          >
+            <LogIn className="w-3.5 h-3.5" />
+            <span>تسجيل الدخول</span>
+          </Link>
+        </div>
       </header>
 
       {/* Hero Section */}
@@ -67,6 +81,7 @@ export default function HomePage() {
               onClick={playCyberClick}
               className="w-full sm:w-auto px-8 py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-bold text-sm transition-all shadow-xl shadow-blue-600/30 flex items-center justify-center gap-2 hover:scale-105 active:scale-95"
             >
+              <LogIn className="w-4 h-4" />
               <span>تسجيل الدخول للمنصة</span>
               <ArrowLeft className="w-4 h-4" />
             </Link>
@@ -77,6 +92,7 @@ export default function HomePage() {
               onClick={playCyberClick}
               className="w-full sm:w-auto px-7 py-3.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-slate-700/80 rounded-2xl font-bold text-sm transition-all shadow-lg flex items-center justify-center gap-2 hover:scale-105 active:scale-95"
             >
+              <UserPlus className="w-4 h-4 text-blue-400" />
               <span>إنشاء حساب طالب جديد</span>
             </Link>
           </div>

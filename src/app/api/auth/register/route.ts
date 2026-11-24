@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import prisma from "@/lib/prisma";
+import { normalizeEgyptianPhone } from "@/lib/arabic-search";
 
 // التحقق من صيغة الهاتف المصري: 010, 011, 012, 015
 const EGYPT_PHONE_REGEX = /^01[0125][0-9]{8}$/;
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
 
     const cleanName = sanitizeText(name);
     const cleanEmail = email.toLowerCase().trim();
-    const cleanPhone = phone.trim();
+    const cleanPhone = normalizeEgyptianPhone(phone);
     const cleanPhoneType = sanitizeText(phoneType || "هاتف محمول");
     const cleanFingerprint = sanitizeText(deviceFingerprint);
 

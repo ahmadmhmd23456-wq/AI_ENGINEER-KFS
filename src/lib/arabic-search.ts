@@ -51,6 +51,42 @@ export function getArabicVariants(term: string): string[] {
 }
 
 /**
+ * تحويل الأرقام العربية المشرقية والفارسية إلى أرقام إنجليزية
+ */
+export function normalizeArabicDigits(input: string): string {
+  if (!input) return "";
+  return input
+    .replace(/[٠-٩]/g, (d) => "0123456789"["٠١٢٣٤٥٦٧٨٩".indexOf(d)])
+    .replace(/[۰-۹]/g, (d) => "0123456789"["۰۱۲۳۴۵۶۷۸۹".indexOf(d)]);
+}
+
+/**
+ * تنظيف وتوحيد رقم الهاتف المصري لدعم كل التنسيقات (أرقام عربية، +20، مسافات)
+ */
+export function normalizeEgyptianPhone(phone: string): string {
+  if (!phone) return "";
+  let clean = normalizeArabicDigits(phone)
+    .replace(/[\s\-\(\)\.]/g, "")
+    .trim();
+
+  if (clean.startsWith("+20")) clean = clean.slice(3);
+  else if (clean.startsWith("0020")) clean = clean.slice(4);
+  else if (clean.startsWith("20") && clean.length === 12) clean = clean.slice(2);
+
+  if (
+    clean.length === 10 &&
+    (clean.startsWith("10") ||
+      clean.startsWith("11") ||
+      clean.startsWith("12") ||
+      clean.startsWith("15"))
+  ) {
+    clean = "0" + clean;
+  }
+
+  return clean;
+}
+
+/**
  * بناء استعلام Prisma للبحث الشامل
  */
 export function buildStudentSearchQuery(query: string) {

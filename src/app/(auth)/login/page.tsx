@@ -132,6 +132,7 @@ function LoginForm() {
       } else {
         setMode("LOGIN");
         setLoginIdentifier(email);
+        setSuccessMessage("تم إنشاء الحساب بنجاح! أدخل كلمة المرور لتسجيل الدخول فوراً.");
         setIsLoading(false);
       }
     } catch {
@@ -298,9 +299,41 @@ function LoginForm() {
 
           {/* تنبيه الأخطاء أو النجاح */}
           {errorMessage && (
-            <div className="mb-5 p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-2">
-              <Lock className="w-4 h-4 flex-shrink-0" />
-              <span>{errorMessage}</span>
+            <div className="mb-5 p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{errorMessage}</span>
+              </div>
+              {mode === "REGISTER" && errorMessage.includes("مسجل بالفعل") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    playCyberClick();
+                    setMode("LOGIN");
+                    if (email) setLoginIdentifier(email);
+                    else if (phone) setLoginIdentifier(phone);
+                    setErrorMessage(null);
+                  }}
+                  className="text-xs text-blue-400 hover:text-blue-300 font-bold underline text-right transition-colors"
+                >
+                  اضغط هنا لتسجيل الدخول مباشرة بهذا الحساب ←
+                </button>
+              )}
+              {mode === "LOGIN" && errorMessage.includes("غير صحيحة") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    playCyberClick();
+                    setMode("REGISTER");
+                    if (loginIdentifier.includes("@")) setEmail(loginIdentifier);
+                    else if (loginIdentifier.startsWith("01")) setPhone(loginIdentifier);
+                    setErrorMessage(null);
+                  }}
+                  className="text-xs text-blue-400 hover:text-blue-300 font-bold underline text-right transition-colors"
+                >
+                  طالب جديد وتريد التسجيل؟ اضغط هنا لإنشاء حساب جديد ←
+                </button>
+              )}
             </div>
           )}
 
@@ -408,6 +441,23 @@ function LoginForm() {
                 <span>{isLoading ? "جاري إنشاء الحساب..." : "إنشاء الحساب وبدء التعلم"}</span>
                 <ArrowLeft className="w-4 h-4" />
               </button>
+
+              <div className="text-center pt-3 border-t border-slate-800/80 mt-4">
+                <p className="text-xs text-slate-400">
+                  لديك حساب مسجل بالفعل؟{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playCyberClick();
+                      setMode("LOGIN");
+                      setErrorMessage(null);
+                    }}
+                    className="text-blue-400 hover:text-blue-300 font-bold underline transition-colors mr-1"
+                  >
+                    تسجيل الدخول مباشرة
+                  </button>
+                </p>
+              </div>
             </form>
           )}
 
@@ -492,6 +542,23 @@ function LoginForm() {
                 <span>{isLoading ? "جاري التحقق من بيانات الدخول..." : "تسجيل الدخول للمنصة"}</span>
                 <ArrowLeft className="w-4 h-4" />
               </button>
+
+              <div className="text-center pt-3 border-t border-slate-800/80 mt-4">
+                <p className="text-xs text-slate-400">
+                  طالب جديد وتريد الانضمام للمنصة؟{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playCyberClick();
+                      setMode("REGISTER");
+                      setErrorMessage(null);
+                    }}
+                    className="text-blue-400 hover:text-blue-300 font-bold underline transition-colors mr-1"
+                  >
+                    إنشاء حساب جديد الآن
+                  </button>
+                </p>
+              </div>
             </form>
           )}
         </div>
