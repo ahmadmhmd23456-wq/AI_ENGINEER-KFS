@@ -6,9 +6,7 @@ import ws from "ws";
 // Enable WebSocket support in Node.js runtime
 if (typeof window === "undefined") {
   neonConfig.webSocketConstructor = ws;
-  if (process.env.NODE_ENV !== "production") {
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-  }
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 }
 
 const globalForPrisma = globalThis as unknown as {

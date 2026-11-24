@@ -7,10 +7,14 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const levelId = searchParams.get("levelId");
     const term = searchParams.get("term");
+    const department = searchParams.get("department");
 
     const where: any = {};
     if (levelId) where.academicLevelId = levelId;
     if (term) where.term = parseInt(term);
+    if (department && department !== "ALL") {
+      where.department = department;
+    }
 
     const subjects = await prisma.subject.findMany({
       where,
@@ -25,7 +29,12 @@ export async function GET(req: NextRequest) {
           },
         },
       },
-      orderBy: [{ academicLevel: { order: "asc" } }, { term: "asc" }, { order: "asc" }],
+      orderBy: [
+        { order: "asc" },
+        { academicLevel: { order: "asc" } },
+        { term: "asc" },
+        { createdAt: "asc" },
+      ],
     });
 
     const levels = await prisma.academicLevel.findMany({
@@ -43,7 +52,19 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { id, name, code, description, price, academicLevelId, term, order, imageUrl, isActive } = body;
+    const {
+      id,
+      name,
+      code,
+      description,
+      price,
+      academicLevelId,
+      term,
+      order,
+      imageUrl,
+      isActive,
+      department,
+    } = body;
 
     if (!name || !academicLevelId || !term) {
       return NextResponse.json(
@@ -53,6 +74,8 @@ export async function POST(req: NextRequest) {
     }
 
     const priceDecimal = price !== undefined ? parseFloat(price) : 50.0;
+    const orderNum = order !== undefined && order !== "" ? parseInt(order.toString(), 10) : 0;
+    const deptValue = department || "GENERAL";
 
     let subject;
     if (id) {
@@ -66,9 +89,10 @@ export async function POST(req: NextRequest) {
           price: priceDecimal,
           academicLevelId,
           term: parseInt(term),
-          order: order ? parseInt(order) : 0,
+          order: orderNum,
           imageUrl,
           isActive: isActive !== undefined ? isActive : true,
+          department: deptValue,
         },
       });
     } else {
@@ -81,9 +105,10 @@ export async function POST(req: NextRequest) {
           price: priceDecimal,
           academicLevelId,
           term: parseInt(term),
-          order: order ? parseInt(order) : 0,
+          order: orderNum,
           imageUrl,
           isActive: isActive !== undefined ? isActive : true,
+          department: deptValue,
         },
       });
     }
@@ -95,6 +120,45 @@ export async function POST(req: NextRequest) {
       { error: "فشل حفظ بيانات المادة: " + (error.message || "") },
       { status: 500 }
     );
+  }
+}
+
+// إعادة ترتيب المواد (Reorder)
+export async function PATCH(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { items, swap } = body;
+
+    // حالة تبديل مادتين مباشرة (Swap)
+    if (swap && swap.id1 && swap.id2) {
+      const sub1 = await prisma.subject.findUnique({ where: { id: swap.id1 }, select: { id: true, order: true } });
+      const sub2 = await prisma.subject.findUnique({ where: { id: swap.id2 }, select: { id: true, order: true } });
+
+      if (sub1 && sub2) {
+        await prisma.$transaction([
+          prisma.subject.update({ where: { id: sub1.id }, data: { order: sub2.order } }),
+          prisma.subject.update({ where: { id: sub2.id }, data: { order: sub1.order } }),
+        ]);
+        return NextResponse.json({ success: true, message: "تم تبديل الترتيب بنجاح" });
+      }
+    }
+
+    // حالة تحديث قائمة الترتيب كاملاً
+    if (Array.isArray(items)) {
+      const updateOps = items.map((item: { id: string; order: number }) =>
+        prisma.subject.update({
+          where: { id: item.id },
+          data: { order: item.order },
+        })
+      );
+      await prisma.$transaction(updateOps);
+      return NextResponse.json({ success: true, message: "تم تحديث ترتيب المواد بنجاح" });
+    }
+
+    return NextResponse.json({ error: "بيانات الترتيب غير صالحة" }, { status: 400 });
+  } catch (error: any) {
+    console.error("Admin Subjects PATCH Reorder Error:", error);
+    return NextResponse.json({ error: "فشل تحديث الترتيب" }, { status: 500 });
   }
 }
 

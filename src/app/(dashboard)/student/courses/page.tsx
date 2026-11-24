@@ -35,7 +35,7 @@ import {
   playSuccessChime,
 } from "@/lib/sound";
 
-export interface DepartmentInfo {
+interface DepartmentInfo {
   id: string;
   name: string;
   shortName: string;
@@ -52,7 +52,7 @@ export interface DepartmentInfo {
   focusTopics: string[];
 }
 
-export const DEPARTMENTS: DepartmentInfo[] = [
+const DEPARTMENTS: DepartmentInfo[] = [
   {
     id: "AI",
     name: "هندسة الذكاء الاصطناعي",
@@ -135,13 +135,19 @@ export default function StudentCoursesPage() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"WALLET" | "CARD" | "INSTAPAY">("WALLET");
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
-  const fetchCourses = () => {
+  const fetchCourses = (deptToFetch?: string) => {
     setLoading(true);
-    fetch("/api/student/courses")
+    const activeDept = deptToFetch !== undefined ? deptToFetch : selectedDept;
+    let url = "/api/student/courses";
+    if (activeDept && activeDept !== "ALL") {
+      url += `?department=${activeDept}`;
+    }
+
+    fetch(url)
       .then((res) => res.json())
       .then((json) => {
         setData(json);
-        const userDept = json?.user?.department || localStorage.getItem("student_selected_dept");
+        const userDept = deptToFetch || json?.user?.department || localStorage.getItem("student_selected_dept");
         if (userDept) {
           setSelectedDept(userDept);
         } else {
@@ -157,7 +163,7 @@ export default function StudentCoursesPage() {
     fetchCourses();
   }, []);
 
-  // اختيار وحفظ القسم الهندسي
+  // اختيار وحفظ القسم الهندسي وتحديث قائمة المقررات فوراً
   const handleSelectDepartment = async (deptId: string) => {
     setIsSavingDept(true);
     playCyberClick();
@@ -171,8 +177,10 @@ export default function StudentCoursesPage() {
         body: JSON.stringify({ department: deptId }),
       });
       playSuccessChime();
+      fetchCourses(deptId);
     } catch {
       // حفظ محلي في حال تعذر الشبكة
+      fetchCourses(deptId);
     } finally {
       setIsSavingDept(false);
       setIsDeptModalOpen(false);
@@ -229,8 +237,17 @@ export default function StudentCoursesPage() {
 
   const { user, subjects } = data || {};
 
-  // فلترة المواد حسب الترم والقسم
-  const termSubjects = subjects?.filter((s: any) => s.term === currentTerm) || [];
+  // فلترة المواد حسب الترم والقسم المختار، وترتيبها وفق الترتيب المحدد من قبل الأدمن
+  const termSubjects = (subjects || [])
+    .filter((s: any) => {
+      const matchTerm = s.term === currentTerm;
+      if (!matchTerm) return false;
+      if (selectedDept === "ALL") return true;
+      const dept = s.department || "GENERAL";
+      return dept === selectedDept || dept === "GENERAL";
+    })
+    .sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0));
+
   const currentDeptInfo = DEPARTMENTS.find((d) => d.id === selectedDept);
 
   return (
@@ -406,7 +423,7 @@ export default function StudentCoursesPage() {
                       : "bg-slate-950 text-slate-400 border-slate-800"
                   }`}
                 >
-                  0{index + 1}
+                  {sub.order ? (sub.order < 10 ? `0${sub.order}` : sub.order) : `0${index + 1}`}
                 </div>
 
                 <div className="space-y-1.5 flex-1">
@@ -420,10 +437,19 @@ export default function StudentCoursesPage() {
                       </span>
                     )}
 
-                    {/* بادج التخصص */}
-                    {currentDeptInfo && (
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${currentDeptInfo.tagClass}`}>
-                        {currentDeptInfo.shortName}
+                    {/* بادج التخصص أو المادة المشتركة */}
+                    {sub.department && sub.department !== "GENERAL" ? (
+                      (() => {
+                        const subDept = DEPARTMENTS.find((d) => d.id === sub.department);
+                        return subDept ? (
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${subDept.tagClass}`}>
+                            تخصص: {subDept.shortName}
+                          </span>
+                        ) : null;
+                      })()
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-purple-500/10 text-purple-300 border-purple-500/20">
+                        عامة مشتركة
                       </span>
                     )}
 

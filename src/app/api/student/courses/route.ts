@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     const userId = (session?.user as any)?.id;
@@ -11,6 +11,9 @@ export async function GET() {
     if (!userId) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
     }
+
+    const { searchParams } = new URL(req.url);
+    const queryDept = searchParams.get("department");
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -27,10 +30,30 @@ export async function GET() {
       return NextResponse.json({ error: "المستخدم غير موجود" }, { status: 404 });
     }
 
-    // جلب المواد الخاصة بدفعة الطالب
+    const targetDept = queryDept || user.department || null;
+
+    // جلب المواد الخاصة بدفعة الطالب وقسمه الهندسي بترتيب الأدمن
     const levelId = user.academicLevelId;
+    
+    // بناء شرط القسم: مواد التخصص المختار + المواد العامة المشتركة
+    const whereCondition: any = {
+      isActive: true,
+    };
+
+    if (levelId) {
+      whereCondition.academicLevelId = levelId;
+    }
+
+    if (targetDept && targetDept !== "ALL") {
+      whereCondition.OR = [
+        { department: targetDept },
+        { department: "GENERAL" },
+        { department: null },
+      ];
+    }
+
     const subjects = await prisma.subject.findMany({
-      where: levelId ? { academicLevelId: levelId, isActive: true } : { isActive: true },
+      where: whereCondition,
       include: {
         academicLevel: true,
         _count: {
@@ -40,7 +63,11 @@ export async function GET() {
           },
         },
       },
-      orderBy: [{ term: "asc" }, { order: "asc" }],
+      orderBy: [
+        { order: "asc" },
+        { term: "asc" },
+        { createdAt: "asc" },
+      ],
     });
 
     const purchasedSubjectIds = new Set(user.purchases.map((p) => p.subjectId));
@@ -60,6 +87,7 @@ export async function GET() {
         canChangeLevel: user.canChangeLevel,
         department: user.department || null,
       },
+      currentDepartment: targetDept,
       subjects: enrichedSubjects,
     });
   } catch (error) {
