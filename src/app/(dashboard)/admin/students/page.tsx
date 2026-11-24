@@ -26,6 +26,9 @@ import {
   Sliders,
   DollarSign,
   AlertTriangle,
+  KeyRound,
+  Copy,
+  Check,
 } from "lucide-react";
 
 export default function AdminStudentsPage() {
@@ -51,6 +54,13 @@ export default function AdminStudentsPage() {
   // مودال تعديل البريد
   const [selectedStudentForEmail, setSelectedStudentForEmail] = useState<any | null>(null);
   const [newEmail, setNewEmail] = useState("");
+
+  // مودال تعيين كلمة المرور
+  const [selectedStudentForPassword, setSelectedStudentForPassword] = useState<any | null>(null);
+  const [newStudentPassword, setNewStudentPassword] = useState("");
+  const [passwordCopied, setPasswordCopied] = useState(false);
+  const [passwordSuccessMessage, setPasswordSuccessMessage] = useState<string | null>(null);
+
   const [submitting, setSubmitting] = useState(false);
 
   const fetchStudents = () => {
@@ -246,6 +256,41 @@ export default function AdminStudentsPage() {
       }
     } catch {
       alert("حدث خطأ أثناء التحديث");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // تعيين كلمة المرور الجديدة للطالب
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedStudentForPassword || !newStudentPassword) return;
+    if (newStudentPassword.length < 6) {
+      alert("كلمة المرور يجب ألا تقل عن 6 أحرف");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/admin/students", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: selectedStudentForPassword.id,
+          action: "RESET_PASSWORD",
+          newPassword: newStudentPassword,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setPasswordSuccessMessage(`تم تعيين كلمة المرور (${newStudentPassword}) بنجاح! يمكنك الآن نسخ الرسالة وإرسالها للطالب.`);
+        fetchStudents();
+      } else {
+        alert(data.error || "فشل تعيين كلمة المرور");
+      }
+    } catch {
+      alert("حدث خطأ أثناء الاتصال بالخادم");
     } finally {
       setSubmitting(false);
     }
@@ -458,6 +503,20 @@ export default function AdminStudentsPage() {
                           title="تعديل حساب Google"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+
+                        {/* تعيين كلمة مرور جديدة للطالب */}
+                        <button
+                          onClick={() => {
+                            setSelectedStudentForPassword(student);
+                            setNewStudentPassword("12345678");
+                            setPasswordCopied(false);
+                            setPasswordSuccessMessage(null);
+                          }}
+                          className="p-1.5 bg-amber-500/10 hover:bg-amber-500 text-amber-400 hover:text-slate-950 rounded-lg transition-all"
+                          title="تعيين كلمة مرور جديدة للطالب (Reset Password)"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
                         </button>
 
                         {/* قفل / فك الحظر */}
@@ -761,6 +820,134 @@ export default function AdminStudentsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 4. مودال تعيين كلمة مرور جديدة للطالب */}
+      {selectedStudentForPassword && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative">
+            <button
+              onClick={() => setSelectedStudentForPassword(null)}
+              className="absolute top-5 left-5 text-slate-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                <KeyRound className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">تعيين كلمة مرور جديدة للطالب</h3>
+                <p className="text-xs text-slate-400">
+                  للطالب: <span className="text-white font-bold">{selectedStudentForPassword.name}</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl mb-4 text-xs space-y-1">
+              <div className="flex items-center justify-between text-slate-400">
+                <span>البريد الإلكتروني:</span>
+                <span className="text-slate-200 font-mono" dir="ltr">{selectedStudentForPassword.email}</span>
+              </div>
+              <div className="flex items-center justify-between text-slate-400">
+                <span>رقم الهاتف:</span>
+                <span className="text-slate-200 font-mono" dir="ltr">{selectedStudentForPassword.phone}</span>
+              </div>
+            </div>
+
+            {passwordSuccessMessage ? (
+              <div className="space-y-4 text-xs">
+                <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-emerald-400 flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>{passwordSuccessMessage}</span>
+                </div>
+
+                <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                  <p className="text-slate-400 text-[11px] font-medium">رسالة جاهزة للإرسال للطالب عبر الواتساب:</p>
+                  <p className="p-2.5 bg-slate-900 rounded-xl text-slate-200 font-mono text-[11px] select-all leading-relaxed" dir="rtl">
+                    مرحباً بك يا {selectedStudentForPassword.name}،<br />
+                    تم تحديث بيانات دخولك لمنصة هندسة:<br />
+                    - الحساب: {selectedStudentForPassword.email}<br />
+                    - كلمة المرور الجديدة: {newStudentPassword}<br />
+                    رابط المنصة: https://eng-academy-eg.vercel.app
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const msg = `مرحباً بك يا ${selectedStudentForPassword.name}،\nتم تحديث بيانات دخولك لمنصة هندسة:\n- الحساب: ${selectedStudentForPassword.email}\n- كلمة المرور الجديدة: ${newStudentPassword}\nرابط المنصة: https://eng-academy-eg.vercel.app`;
+                      navigator.clipboard.writeText(msg);
+                      setPasswordCopied(true);
+                      setTimeout(() => setPasswordCopied(false), 3000);
+                    }}
+                    className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-600/20"
+                  >
+                    {passwordCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    <span>{passwordCopied ? "تم نسخ الرسالة بنجاح!" : "نسخ الرسالة لإرسالها بالواتساب"}</span>
+                  </button>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStudentForPassword(null)}
+                    className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-medium"
+                  >
+                    إغلاق
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleResetPassword} className="space-y-4 text-xs">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-slate-300 font-medium">كلمة المرور الجديدة:</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const randomPass = "Pass@" + Math.floor(1000 + Math.random() * 9000);
+                        setNewStudentPassword(randomPass);
+                      }}
+                      className="text-amber-400 hover:text-amber-300 text-[11px] underline"
+                    >
+                      توليد كلمة سر تلقائية
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    value={newStudentPassword}
+                    onChange={(e) => setNewStudentPassword(e.target.value)}
+                    placeholder="مثال: 12345678 أو Pass@1234"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl font-mono text-white focus:outline-none focus:border-amber-500"
+                    dir="ltr"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    سيتم تشفير كلمة المرور وتعيينها فوراً، وسيتمكن الطالب من الدخول بها مباشرة.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStudentForPassword(null)}
+                    className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-medium"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold rounded-xl disabled:opacity-50 transition-all flex items-center gap-1.5"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    <span>{submitting ? "جاري التعيين..." : "تعيين وحفظ كلمة المرور"}</span>
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-guard";
 import { buildStudentSearchQuery } from "@/lib/arabic-search";
+import bcrypt from "bcryptjs";
 
 export async function GET(req: NextRequest) {
   try {
@@ -85,6 +86,7 @@ export async function POST(req: NextRequest) {
       userId,
       action,
       newEmail,
+      newPassword,
       academicLevelId,
       subjectId,
       grant,
@@ -177,7 +179,19 @@ export async function POST(req: NextRequest) {
         data: { email: newEmail.toLowerCase().trim() },
       });
     }
-    // 6. قفل أو فك حظر الحساب
+    // 6. تعيين كلمة مرور جديدة للطالب
+    else if (action === "RESET_PASSWORD" && newPassword) {
+      if (typeof newPassword !== "string" || newPassword.length < 6) {
+        return NextResponse.json({ error: "كلمة المرور يجب ألا تقل عن 6 أحرف" }, { status: 400 });
+      }
+      const passwordHash = await bcrypt.hash(newPassword, 12);
+      await prisma.user.update({
+        where: { id: userId },
+        data: { passwordHash },
+      });
+      return NextResponse.json({ success: true, message: "تم تعيين كلمة المرور الجديدة للطالب بنجاح!" });
+    }
+    // 7. قفل أو فك حظر الحساب
     else if (action === "TOGGLE_LOCK") {
       const user = await prisma.user.findUnique({ where: { id: userId } });
       const newStatus = user?.status === "LOCKED" ? "ACTIVE" : "LOCKED";
