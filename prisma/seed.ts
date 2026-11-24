@@ -24,7 +24,7 @@ async function main() {
   console.log("✅ Academic Levels created:", Object.keys(levels).length);
 
   // 2. Create Admin Account (المدرس والأدمن الوحيد)
-  const adminEmail = process.env.ADMIN_EMAIL || "eng.teacher@gmail.com";
+  const adminEmail = process.env.ADMIN_EMAIL || "ahmadmhmd23456@gmail.com";
   const adminPhone = process.env.ADMIN_PHONE || "01012345678";
 
   const adminUser = await prisma.user.upsert({

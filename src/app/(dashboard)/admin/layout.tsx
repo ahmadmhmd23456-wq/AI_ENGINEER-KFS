@@ -29,7 +29,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const userEmail = session?.user?.email?.toLowerCase().trim();
   const isAdmin =
     (session?.user as any)?.role === "ADMIN" &&
-    (userEmail === "ahmadmhmd23456@gmail.com" || userEmail === "eng.teacher@gmail.com");
+    userEmail === "ahmadmhmd23456@gmail.com";
 
   useEffect(() => {
     if (authStatus === "authenticated" && !isAdmin) {
@@ -134,7 +134,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               {session?.user?.name || "د. محمد المهندس"}
             </div>
             <div className="text-[11px] text-slate-400 truncate font-mono">
-              {session?.user?.email || "eng.teacher@gmail.com"}
+              {session?.user?.email || "ahmadmhmd23456@gmail.com"}
             </div>
           </div>
 

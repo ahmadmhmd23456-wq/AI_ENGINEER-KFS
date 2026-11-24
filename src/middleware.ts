@@ -64,7 +64,6 @@ export async function middleware(request: NextRequest) {
     }
 
     const adminEmails = [
-      "eng.teacher@gmail.com",
       "ahmadmhmd23456@gmail.com",
       process.env.ADMIN_EMAIL?.toLowerCase().trim(),
     ].filter(Boolean);

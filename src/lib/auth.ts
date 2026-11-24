@@ -13,7 +13,6 @@ import {
 import { normalizeEgyptianPhone } from "./arabic-search";
 
 export const ADMIN_EMAILS = [
-  "eng.teacher@gmail.com",
   "ahmadmhmd23456@gmail.com",
   process.env.ADMIN_EMAIL?.toLowerCase().trim(),
 ].filter(Boolean) as string[];
