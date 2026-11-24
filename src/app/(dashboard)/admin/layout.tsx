@@ -131,7 +131,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="pt-4 border-t border-slate-800 space-y-3">
           <div className="px-2">
             <div className="text-xs font-bold text-white truncate">
-              {session?.user?.name || "د. محمد المهندس"}
+              {session?.user?.name || "م/ أحمد محمد رضا"}
             </div>
             <div className="text-[11px] text-slate-400 truncate font-mono">
               {session?.user?.email || "ahmadmhmd23456@gmail.com"}

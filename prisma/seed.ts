@@ -32,11 +32,11 @@ async function main() {
     update: {
       role: "ADMIN",
       status: "ACTIVE",
-      name: "د. محمد المهندس (الأستاذ والأدمن)",
+      name: "م/ أحمد محمد رضا (الأدمن)",
       phone: adminPhone,
     },
     create: {
-      name: "د. محمد المهندس (الأستاذ والأدمن)",
+      name: "م/ أحمد محمد رضا (الأدمن)",
       email: adminEmail,
       phone: adminPhone,
       role: "ADMIN",
