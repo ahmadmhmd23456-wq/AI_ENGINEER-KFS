@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "katex/dist/katex.min.css";
 import SessionProvider from "@/components/providers/SessionProvider";
 import SoundController from "@/components/common/SoundController";
 import ScrollRevealManager from "@/components/common/ScrollRevealManager";

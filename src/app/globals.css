@@ -44,6 +44,18 @@
   user-select: none;
 }
 
+/* KaTeX Math RTL Support */
+.katex {
+  direction: ltr !important;
+  text-align: left !important;
+  font-size: 1.08em;
+}
+.katex-display {
+  direction: ltr !important;
+  text-align: center !important;
+  margin: 0.75em 0 !important;
+}
+
 /* ========================================================== */
 /* 🔥 VIDEO-STYLE KINETIC TEXT & CONTENT REVEAL ANIMATIONS    */
 /* ========================================================== */

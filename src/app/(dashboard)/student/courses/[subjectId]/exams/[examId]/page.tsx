@@ -28,6 +28,7 @@ import {
   playTargetLock,
   playSuccessChime,
 } from "@/lib/sound";
+import LatexRenderer from "@/components/common/LatexRenderer";
 
 export default function StudentExamPage({
   params,
@@ -490,9 +491,9 @@ export default function StudentExamPage({
                     </div>
 
                     {/* نص السؤال */}
-                    <p className="text-sm sm:text-base font-bold text-white leading-relaxed mb-4">
-                      {q.text}
-                    </p>
+                    <div className="text-sm sm:text-base font-bold text-white leading-relaxed mb-4">
+                      <LatexRenderer content={q.text} />
+                    </div>
 
                     {/* صورة السؤال إن وجدت */}
                     {q.imageUrl && (
@@ -545,7 +546,7 @@ export default function StudentExamPage({
                               >
                                 {opt.id}
                               </div>
-                              <span>{opt.text}</span>
+                              <span><LatexRenderer content={opt.text} /></span>
                             </div>
 
                             {badge}
@@ -561,9 +562,9 @@ export default function StudentExamPage({
                           <Lightbulb className="w-4 h-4 text-amber-400 flex-shrink-0" />
                           <span>الشرح والتوضيح الهندسي للحل:</span>
                         </div>
-                        <p className="leading-relaxed text-slate-300 pr-6">
-                          {q.explanation}
-                        </p>
+                        <div className="leading-relaxed text-slate-300 pr-6">
+                          <LatexRenderer content={q.explanation} />
+                        </div>
                       </div>
                     )}
                   </div>
@@ -669,9 +670,9 @@ export default function StudentExamPage({
             </div>
 
             {/* نص السؤال */}
-            <h3 className="text-base sm:text-lg font-bold text-white leading-relaxed mb-6">
-              {currentQuestion.text}
-            </h3>
+            <div className="text-base sm:text-lg font-bold text-white leading-relaxed mb-6">
+              <LatexRenderer content={currentQuestion.text} />
+            </div>
 
             {/* صورة السؤال إن وجدت */}
             {currentQuestion.imageUrl && (
@@ -707,7 +708,7 @@ export default function StudentExamPage({
                       >
                         {opt.id}
                       </span>
-                      <span className="text-sm font-medium">{opt.text}</span>
+                      <span className="text-sm font-medium"><LatexRenderer content={opt.text} /></span>
                     </div>
 
                     <div

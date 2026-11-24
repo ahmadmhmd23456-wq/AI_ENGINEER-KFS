@@ -16,6 +16,7 @@ import {
   UploadCloud,
   FileSpreadsheet,
 } from "lucide-react";
+import LatexRenderer from "@/components/common/LatexRenderer";
 
 export default function AdminExamsPage() {
   const [exams, setExams] = useState<any[]>([]);
@@ -306,7 +307,9 @@ export default function AdminExamsPage() {
                   <span className="font-mono text-slate-400">الدرجة: {q.points}</span>
                 </div>
 
-                <p className="text-sm font-bold text-white leading-relaxed">{q.text}</p>
+                <div className="text-sm font-bold text-white leading-relaxed">
+                  <LatexRenderer content={q.text} />
+                </div>
 
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   {(q.options as any[])?.map((opt: any) => {
@@ -321,15 +324,16 @@ export default function AdminExamsPage() {
                         }`}
                       >
                         <span className="font-mono font-bold">{opt.id}.</span>
-                        <span>{opt.text}</span>
+                        <span><LatexRenderer content={opt.text} /></span>
                       </div>
                     );
                   })}
                 </div>
 
                 {q.explanation && (
-                  <div className="p-2.5 bg-blue-950/30 border border-blue-800/30 rounded-xl text-[11px] text-blue-300">
-                    💡 التفسير: {q.explanation}
+                  <div className="p-2.5 bg-blue-950/30 border border-blue-800/30 rounded-xl text-[11px] text-blue-300 flex items-start gap-1.5">
+                    <span className="flex-shrink-0">💡 التفسير:</span>
+                    <div><LatexRenderer content={q.explanation} /></div>
                   </div>
                 )}
               </div>
@@ -560,15 +564,57 @@ export default function AdminExamsPage() {
               </div>
 
               <div>
-                <label className="block text-slate-300 font-medium mb-1">نص السؤال:</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-slate-300 font-medium">نص السؤال (يدعم LaTeX للرياضيات والهندسة):</label>
+                  <span className="text-[10px] text-blue-400">استخدم $..$ للمعادلات</span>
+                </div>
+
+                {/* شريط رموز LaTeX سريعة */}
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {[
+                    { label: "كسر", code: "$\\frac{a}{b}$" },
+                    { label: "جذر", code: "$\\sqrt{x}$" },
+                    { label: "تكامل", code: "$\\int_0^\\pi f(x) dx$" },
+                    { label: "أس", code: "$x^2$" },
+                    { label: "أوميجا Ω", code: "$\\Omega$" },
+                    { label: "باي π", code: "$\\pi$" },
+                    { label: "ثيتا θ", code: "$\\theta$" },
+                    { label: "موجب/سالب", code: "$\\pm$" },
+                  ].map((tpl) => (
+                    <button
+                      key={tpl.label}
+                      type="button"
+                      onClick={() =>
+                        setQuestionForm((prev) => ({
+                          ...prev,
+                          text: prev.text ? `${prev.text} ${tpl.code}` : tpl.code,
+                        }))
+                      }
+                      className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-mono text-slate-300 transition-all"
+                    >
+                      +{tpl.label}
+                    </button>
+                  ))}
+                </div>
+
                 <textarea
                   required
                   rows={2}
                   value={questionForm.text}
                   onChange={(e) => setQuestionForm({ ...questionForm, text: e.target.value })}
-                  placeholder="اكتب نص السؤال هنا..."
-                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                  placeholder="مثال: احسب ناتج التكامل $\int_0^1 x^2 dx$ أو إذا كان الجهد $V = 220\text{ V}$..."
+                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-blue-500 font-mono text-xs"
                 />
+
+                {/* معاينة حية فورية لمعادلات السؤال */}
+                {questionForm.text.trim() && (
+                  <div className="mt-2 p-2.5 bg-blue-950/20 border border-blue-800/40 rounded-xl text-xs">
+                    <span className="text-[10px] text-blue-400 font-bold block mb-1">معاينة شكل السؤال والمعادلات:</span>
+                    <div className="text-white font-semibold">
+                      <LatexRenderer content={questionForm.text} />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-2">
