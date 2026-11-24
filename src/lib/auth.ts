@@ -12,6 +12,18 @@ import {
 } from "./rate-limiter";
 import { normalizeEgyptianPhone } from "./arabic-search";
 
+export const ADMIN_EMAILS = [
+  "eng.teacher@gmail.com",
+  "ahmadmhmd23456@gmail.com",
+  "ansomaraai@gmail.com",
+  process.env.ADMIN_EMAIL?.toLowerCase().trim(),
+].filter(Boolean) as string[];
+
+export function isPlatformAdmin(email?: string | null): boolean {
+  if (!email) return false;
+  return ADMIN_EMAILS.includes(email.toLowerCase().trim());
+}
+
 const isProduction =
   process.env.NODE_ENV === "production" ||
   process.env.NEXTAUTH_URL?.startsWith("https://");
@@ -322,7 +334,7 @@ export const authOptions: NextAuthOptions = {
       // تدوير معرّف الجلسة (Session ID Rotation) لمنع هجمات Session Fixation
       if (user) {
         token.id = user.id;
-        token.role = (user as any).role;
+        token.role = isPlatformAdmin(user.email) ? "ADMIN" : (user as any).role;
         token.status = (user as any).status;
         token.phone = (user as any).phone;
         token.academicLevelId = (user as any).academicLevelId;
@@ -338,6 +350,10 @@ export const authOptions: NextAuthOptions = {
       }
 
       if (token.email) {
+        if (isPlatformAdmin(token.email)) {
+          token.role = "ADMIN";
+        }
+
         const dbUser = await prisma.user.findUnique({
           where: { email: token.email },
           select: {
@@ -350,7 +366,7 @@ export const authOptions: NextAuthOptions = {
         });
         if (dbUser) {
           token.id = dbUser.id;
-          token.role = dbUser.role;
+          token.role = isPlatformAdmin(token.email) ? "ADMIN" : dbUser.role;
           token.status = dbUser.status;
           token.phone = dbUser.phone;
           token.academicLevelId = dbUser.academicLevelId;
@@ -363,7 +379,7 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user) {
         (session.user as any).id = token.id;
-        (session.user as any).role = token.role;
+        (session.user as any).role = isPlatformAdmin(session.user.email) ? "ADMIN" : token.role;
         (session.user as any).status = token.status;
         (session.user as any).phone = token.phone;
         (session.user as any).academicLevelId = token.academicLevelId;

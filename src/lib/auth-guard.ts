@@ -1,5 +1,5 @@
 import { getServerSession } from "next-auth";
-import { authOptions } from "./auth";
+import { authOptions, isPlatformAdmin } from "./auth";
 import { NextResponse } from "next/server";
 
 export interface GuardResult {
@@ -52,7 +52,7 @@ export async function requireAdmin(): Promise<GuardResult> {
   const session = await getServerSession(authOptions);
   const user = session?.user as any;
 
-  if (!user?.id) {
+  if (!user?.id && !user?.email) {
     return {
       error: NextResponse.json(
         { error: "غير مصرح. يرجى تسجيل الدخول بحساب مسؤول." },
@@ -62,7 +62,9 @@ export async function requireAdmin(): Promise<GuardResult> {
     };
   }
 
-  if (user.role !== "ADMIN") {
+  const isAdmin = user.role === "ADMIN" || isPlatformAdmin(user.email);
+
+  if (!isAdmin) {
     return {
       error: NextResponse.json(
         { error: "مرفوض: لا تمتلك صلاحيات الإدارة للوصول لهذه البيانات." },
@@ -72,5 +74,5 @@ export async function requireAdmin(): Promise<GuardResult> {
     };
   }
 
-  return { error: null, user };
+  return { error: null, user: { ...user, role: "ADMIN" } };
 }
