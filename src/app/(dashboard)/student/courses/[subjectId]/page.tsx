@@ -85,8 +85,8 @@ export default function SubjectContentPage({
   if (error) {
     const studentName = session?.user?.name || "";
     const studentPhone = (session?.user as any)?.phone || "";
-    const whatsappMsg = `السلام عليكم م/ أحمد، أرغب في تفعيل كورس على منصة هندسة.\nاسمي: ${studentName}\nرقم هاتفي: ${studentPhone}`;
-    const whatsappUrl = `https://wa.me/201065375309?text=${encodeURIComponent(whatsappMsg)}`;
+    const whatsappMsg = `السلام عليكم، أرغب في تفعيل كورس على منصة هندسة بعد التحويل لرقم (01002051553 - sobhy m).\nاسمي: ${studentName}\nرقم هاتفي: ${studentPhone}`;
+    const whatsappUrl = `https://wa.me/201002051553?text=${encodeURIComponent(whatsappMsg)}`;
 
     return (
       <div className="max-w-md mx-auto my-12 bg-slate-900 border border-slate-700/80 rounded-3xl p-6 sm:p-8 text-center shadow-2xl relative overflow-hidden" dir="rtl">
@@ -98,12 +98,18 @@ export default function SubjectContentPage({
 
         <h2 className="text-lg font-bold text-white mb-2">الكورس مغلق حالياً</h2>
         <p className="text-xs text-slate-300 leading-relaxed mb-4">
-          هذا المحتوى يتطلب تفعيل الاشتراك يدوياً من قِبل <span className="font-bold text-white">م/ أحمد</span> لضمان حقوقك وأمان حسابك.
+          هذا المحتوى يتطلب تفعيل الاشتراك يدوياً من قِبل <span className="font-bold text-white">م/ أحمد</span> بعد تأكيد التحويل لضمان حقوقك وأمان حسابك.
         </p>
 
-        <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-400 mb-5">
-          <div>رقم فودافون كاش / انستا باي للتحويل:</div>
-          <div className="text-emerald-400 font-mono font-bold text-sm mt-1">01065375309</div>
+        <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-400 mb-5 space-y-2">
+          <div className="flex items-center justify-between">
+            <span>اسم المستلم:</span>
+            <span className="font-bold text-white">sobhy m</span>
+          </div>
+          <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
+            <span>رقم فودافون كاش / انستا باي:</span>
+            <span className="text-emerald-400 font-mono font-bold text-sm">01002051553</span>
+          </div>
         </div>
 
         <div className="space-y-2">
@@ -115,7 +121,7 @@ export default function SubjectContentPage({
             className="w-full py-3 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition-all hover:scale-[1.02] active:scale-[0.98]"
           >
             <MessageCircle className="w-4 h-4 fill-white" />
-            <span>طلب التفعيل من م/ أحمد عبر الواتساب</span>
+            <span>إرسال إيصال التحويل عبر الواتساب لتفعيل الكورس</span>
           </a>
 
           <button

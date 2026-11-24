@@ -630,21 +630,21 @@ export default function StudentCoursesPage() {
 
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-400">اسم المستلم المعتمد:</span>
-                <span className="font-bold text-white">م/ أحمد محمد</span>
+                <span className="font-bold text-white">sobhy m</span>
               </div>
 
               <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
                 <div>
                   <div className="text-[10px] text-slate-400">رقم فودافون كاش / انستا باي:</div>
                   <div className="text-base font-bold font-mono text-emerald-400 tracking-wider">
-                    01065375309
+                    01002051553
                   </div>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => {
-                    navigator.clipboard.writeText("01065375309");
+                    navigator.clipboard.writeText("01002051553");
                     setCopiedPhone(true);
                     playSuccessChime();
                     setTimeout(() => setCopiedPhone(false), 2500);
@@ -674,8 +674,8 @@ export default function StudentCoursesPage() {
                   playCyberClick();
                   const studentName = data?.user?.name || "";
                   const studentPhone = data?.user?.phone || "";
-                  const msg = `السلام عليكم م/ أحمد، أرغب في تفعيل كورس (${selectedSubjectToBuy.name}) على منصة هندسة.\nاسمي: ${studentName}\nرقم هاتفي: ${studentPhone}`;
-                  const url = `https://wa.me/201065375309?text=${encodeURIComponent(msg)}`;
+                  const msg = `السلام عليكم، تم تحويل رسوم كورس (${selectedSubjectToBuy.name}) على رقم (01002051553 - sobhy m) وأرغب في تفعيل الكورس على منصة هندسة.\nاسمي: ${studentName}\nرقم هاتفي: ${studentPhone}`;
+                  const url = `https://wa.me/201002051553?text=${encodeURIComponent(msg)}`;
                   window.open(url, "_blank");
                 }}
                 className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all hover:scale-[1.02] active:scale-[0.98]"
