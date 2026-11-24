@@ -110,7 +110,9 @@ export default function SecureVideoPlayer({
             loading="lazy"
             className="w-full h-full border-0 absolute inset-0 pointer-events-auto"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerPolicy="strict-origin-when-cross-origin"
             allowFullScreen={true}
+            title={videoTitle}
           />
         )
       )}
