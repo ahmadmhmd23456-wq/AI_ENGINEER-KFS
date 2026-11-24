@@ -60,6 +60,12 @@ export async function GET(req: NextRequest) {
         code: true,
         price: true,
         academicLevelId: true,
+        academicLevel: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         department: true,
         term: true,
       },

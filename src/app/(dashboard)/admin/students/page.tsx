@@ -31,6 +31,15 @@ import {
   Check,
 } from "lucide-react";
 
+const DEPT_LABELS: Record<string, string> = {
+  GENERAL: "مواد عامة",
+  AI: "ذكاء اصطناعي",
+  MECHATRONICS: "ميكاترونكس",
+  ARCHITECTURE: "هندسة معمارية",
+  CIVIL: "هندسة مدنية",
+  ALL: "جميع الأقسام",
+};
+
 export default function AdminStudentsPage() {
   const [students, setStudents] = useState<any[]>([]);
   const [levels, setLevels] = useState<any[]>([]);
@@ -50,6 +59,13 @@ export default function AdminStudentsPage() {
   const [selectedStudentForSubjects, setSelectedStudentForSubjects] = useState<any | null>(null);
   const [subjectActionLoading, setSubjectActionLoading] = useState<string | null>(null);
   const [modalSubjectSearch, setModalSubjectSearch] = useState("");
+  const [modalSubjectScope, setModalSubjectScope] = useState<"STUDENT_MATCH" | "LEVEL_ALL" | "ALL">("STUDENT_MATCH");
+
+  const openStudentSubjectsModal = (student: any) => {
+    setSelectedStudentForSubjects(student);
+    setModalSubjectSearch("");
+    setModalSubjectScope("STUDENT_MATCH");
+  };
 
   // مودال تعديل البريد
   const [selectedStudentForEmail, setSelectedStudentForEmail] = useState<any | null>(null);
@@ -416,8 +432,8 @@ export default function AdminStudentsPage() {
                     <td className="py-3 px-4 text-blue-400 font-medium">
                       <div>{student.academicLevel?.name || "غير محدد"}</div>
                       {student.department && (
-                        <span className="text-[10px] text-indigo-300 font-mono">
-                          {student.department}
+                        <span className="text-[10px] text-indigo-300 font-medium">
+                          {DEPT_LABELS[student.department] || student.department}
                         </span>
                       )}
                     </td>
@@ -447,7 +463,7 @@ export default function AdminStudentsPage() {
                     {/* عمود المواد والشحن */}
                     <td className="py-3 px-4">
                       <button
-                        onClick={() => setSelectedStudentForSubjects(student)}
+                        onClick={() => openStudentSubjectsModal(student)}
                         className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-indigo-950/60 border border-indigo-800/40 text-indigo-300 hover:bg-indigo-900/60 hover:text-white transition-all text-[11px] font-medium"
                         title="انقر لفتح أو قفل المواد لهذا الطالب"
                       >
@@ -477,7 +493,7 @@ export default function AdminStudentsPage() {
                       <div className="flex items-center justify-end gap-1.5">
                         {/* زر فتح المواد */}
                         <button
-                          onClick={() => setSelectedStudentForSubjects(student)}
+                          onClick={() => openStudentSubjectsModal(student)}
                           className="p-1.5 bg-blue-950/80 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-800/50 rounded-lg transition-all"
                           title="شحن وفتح المواد للطالب"
                         >
@@ -651,128 +667,235 @@ export default function AdminStudentsPage() {
       )}
 
       {/* 2. مودال إدارة المواد والشحن للطالب */}
-      {selectedStudentForSubjects && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-xl w-full p-6 shadow-2xl relative">
-            <button
-              onClick={() => setSelectedStudentForSubjects(null)}
-              className="absolute top-5 left-5 text-slate-400 hover:text-white"
-            >
-              <X className="w-5 h-5" />
-            </button>
+      {selectedStudentForSubjects && (() => {
+        const studentLevelId = selectedStudentForSubjects.academicLevelId;
+        const studentLevelName = selectedStudentForSubjects.academicLevel?.name || "غير محدد";
+        const studentDept = selectedStudentForSubjects.department;
+        const studentDeptLabel = studentDept ? (DEPT_LABELS[studentDept] || studentDept) : null;
 
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-emerald-600/20 text-emerald-400 flex items-center justify-center">
-                <BookOpen className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-white">إدارة المواد والشحن للطالب</h3>
-                <p className="text-xs text-slate-400">
-                  الطالب: <span className="text-emerald-400 font-bold">{selectedStudentForSubjects.name}</span> • 
-                  الدفعة: <span className="text-white">{selectedStudentForSubjects.academicLevel?.name || "غير محدد"}</span>
-                </p>
-              </div>
-            </div>
+        const filteredSubjects = subjects.filter((sub) => {
+          const isAlreadyPurchased = (selectedStudentForSubjects.purchases || []).some(
+            (p: any) => p.subjectId === sub.id
+          );
 
-            {/* حقل البحث داخل المواد */}
-            <div className="relative mb-3">
-              <input
-                type="text"
-                value={modalSubjectSearch}
-                onChange={(e) => setModalSubjectSearch(e.target.value)}
-                placeholder="ابحث عن مادة محددة بالاسم أو القسم أو الترم..."
-                className="w-full py-2 pr-8 pl-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-              />
-              <Search className="w-3.5 h-3.5 text-slate-500 absolute top-2.5 right-2.5 pointer-events-none" />
-            </div>
+          if (modalSubjectScope === "STUDENT_MATCH") {
+            if (studentLevelId && sub.academicLevelId !== studentLevelId && !isAlreadyPurchased) {
+              return false;
+            }
+            if (
+              studentDept &&
+              studentDept !== "ALL" &&
+              sub.department !== studentDept &&
+              sub.department !== "GENERAL" &&
+              !isAlreadyPurchased
+            ) {
+              return false;
+            }
+          } else if (modalSubjectScope === "LEVEL_ALL") {
+            if (studentLevelId && sub.academicLevelId !== studentLevelId && !isAlreadyPurchased) {
+              return false;
+            }
+          }
 
-            {/* قائمة المواد وتفعيلها بنقرة واحدة */}
-            <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1 mb-5">
-              {subjects
-                .filter((sub) => {
-                  if (!modalSubjectSearch.trim()) return true;
-                  const term = modalSubjectSearch
-                    .toLowerCase()
-                    .replace(/[أإآ]/g, "ا")
-                    .replace(/ة/g, "ه")
-                    .replace(/ى/g, "ي")
-                    .trim();
-                  const name = (sub.name || "")
-                    .toLowerCase()
-                    .replace(/[أإآ]/g, "ا")
-                    .replace(/ة/g, "ه")
-                    .replace(/ى/g, "ي");
-                  const dept = (sub.department || "").toLowerCase();
-                  return name.includes(term) || dept.includes(term);
-                })
-                .map((sub) => {
-                const isPurchased = (selectedStudentForSubjects.purchases || []).some(
-                  (p: any) => p.subjectId === sub.id
-                );
-                const isThisLoading = subjectActionLoading === sub.id;
+          if (!modalSubjectSearch.trim()) return true;
+          const term = modalSubjectSearch
+            .toLowerCase()
+            .replace(/[أإآ]/g, "ا")
+            .replace(/ة/g, "ه")
+            .replace(/ى/g, "ي")
+            .trim();
+          const name = (sub.name || "")
+            .toLowerCase()
+            .replace(/[أإآ]/g, "ا")
+            .replace(/ة/g, "ه")
+            .replace(/ى/g, "ي");
+          const dept = (sub.department || "").toLowerCase();
+          const deptAr = (DEPT_LABELS[sub.department] || "").toLowerCase();
+          const levelName = (sub.academicLevel?.name || "").toLowerCase();
+          return (
+            name.includes(term) ||
+            dept.includes(term) ||
+            deptAr.includes(term) ||
+            levelName.includes(term)
+          );
+        });
 
-                return (
-                  <div
-                    key={sub.id}
-                    className={`p-3 rounded-2xl border transition-all flex items-center justify-between text-xs ${
-                      isPurchased
-                        ? "bg-emerald-950/20 border-emerald-800/40 text-slate-200"
-                        : "bg-slate-950 border-slate-800 text-slate-400"
-                    }`}
-                  >
-                    <div>
-                      <div className="font-bold text-sm text-white flex items-center gap-2">
-                        <span>{sub.name}</span>
-                        {sub.department && (
-                          <span className="text-[10px] text-blue-400 bg-blue-950/60 px-2 py-0.5 rounded border border-blue-800/40 font-mono">
-                            {sub.department}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">
-                        سعر المادة: <span className="font-mono text-emerald-400">{sub.price} ج.م</span> • الترم {sub.term}
-                      </div>
-                    </div>
-
-                    <div>
-                      {isPurchased ? (
-                        <button
-                          disabled={isThisLoading}
-                          onClick={() => handleToggleSubject(selectedStudentForSubjects.id, sub.id, false)}
-                          className="px-3.5 py-2 bg-emerald-600/20 hover:bg-red-600 text-emerald-400 hover:text-white border border-emerald-600/40 hover:border-red-600 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5"
-                          title="المادة مفعلة للطالب، انقر لإلغاء تفعيلها وقفلها"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>{isThisLoading ? "جاري القفل..." : "مفعلة (انقر للقفل)"}</span>
-                        </button>
-                      ) : (
-                        <button
-                          disabled={isThisLoading}
-                          onClick={() => handleToggleSubject(selectedStudentForSubjects.id, sub.id, true)}
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-blue-600/20 transition-all flex items-center gap-1.5"
-                          title="انقر لشحن وفتح المادة للطالب فوراً"
-                        >
-                          <PlusCircle className="w-3.5 h-3.5" />
-                          <span>{isThisLoading ? "جاري الشحن..." : "فتح وشحن المادة"}</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="pt-3 border-t border-slate-800 flex justify-end">
+        return (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-xl w-full p-6 shadow-2xl relative">
               <button
                 onClick={() => setSelectedStudentForSubjects(null)}
-                className="px-5 py-2 bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-medium"
+                className="absolute top-5 left-5 text-slate-400 hover:text-white"
               >
-                إغلاق
+                <X className="w-5 h-5" />
               </button>
+
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-emerald-600/20 text-emerald-400 flex items-center justify-center">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">إدارة المواد والشحن للطالب</h3>
+                  <p className="text-xs text-slate-400 flex flex-wrap items-center gap-1.5 mt-0.5">
+                    <span>الطالب: <span className="text-emerald-400 font-bold">{selectedStudentForSubjects.name}</span></span>
+                    <span>•</span>
+                    <span>الفرقة: <span className="text-blue-400 font-bold">{studentLevelName}</span></span>
+                    {studentDeptLabel && (
+                      <>
+                        <span>•</span>
+                        <span>القسم: <span className="text-indigo-300 font-bold">{studentDeptLabel}</span></span>
+                      </>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              {/* فلاتر عرض المواد (افتراضياً: مواد الطالب حسب فرقته وقسمه) */}
+              <div className="flex flex-wrap items-center gap-1.5 mb-3">
+                <button
+                  type="button"
+                  onClick={() => setModalSubjectScope("STUDENT_MATCH")}
+                  className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all border ${
+                    modalSubjectScope === "STUDENT_MATCH"
+                      ? "bg-emerald-600/20 text-emerald-300 border-emerald-500/40"
+                      : "bg-slate-950 text-slate-400 border-slate-800 hover:text-white"
+                  }`}
+                >
+                  مواد الطالب ({studentLevelName}{studentDeptLabel ? ` • ${studentDeptLabel}` : ""})
+                </button>
+
+                {studentLevelId && studentDept && studentDept !== "ALL" && (
+                  <button
+                    type="button"
+                    onClick={() => setModalSubjectScope("LEVEL_ALL")}
+                    className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all border ${
+                      modalSubjectScope === "LEVEL_ALL"
+                        ? "bg-blue-600/20 text-blue-300 border-blue-500/40"
+                        : "bg-slate-950 text-slate-400 border-slate-800 hover:text-white"
+                    }`}
+                  >
+                    كل مواد {studentLevelName}
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setModalSubjectScope("ALL")}
+                  className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all border ${
+                    modalSubjectScope === "ALL"
+                      ? "bg-indigo-600/20 text-indigo-300 border-indigo-500/40"
+                      : "bg-slate-950 text-slate-400 border-slate-800 hover:text-white"
+                  }`}
+                >
+                  كل مواد المنصة
+                </button>
+              </div>
+
+              {/* حقل البحث داخل المواد */}
+              <div className="relative mb-3">
+                <input
+                  type="text"
+                  value={modalSubjectSearch}
+                  onChange={(e) => setModalSubjectSearch(e.target.value)}
+                  placeholder="ابحث عن مادة محددة بالاسم أو القسم أو الترم..."
+                  className="w-full py-2 pr-8 pl-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                />
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute top-2.5 right-2.5 pointer-events-none" />
+              </div>
+
+              {/* قائمة المواد وتفعيلها بنقرة واحدة */}
+              <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1 mb-5">
+                {filteredSubjects.length === 0 ? (
+                  <div className="p-6 bg-slate-950/60 border border-slate-800 rounded-2xl text-center space-y-2">
+                    <p className="text-xs text-slate-400">
+                      لا توجد مواد مضافة في هذه الفرقة / القسم حالياً.
+                    </p>
+                    {modalSubjectScope !== "ALL" && (
+                      <button
+                        type="button"
+                        onClick={() => setModalSubjectScope("ALL")}
+                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-blue-400 font-semibold"
+                      >
+                        عرض جميع مواد المنصة
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  filteredSubjects.map((sub) => {
+                    const isPurchased = (selectedStudentForSubjects.purchases || []).some(
+                      (p: any) => p.subjectId === sub.id
+                    );
+                    const isThisLoading = subjectActionLoading === sub.id;
+
+                    return (
+                      <div
+                        key={sub.id}
+                        className={`p-3 rounded-2xl border transition-all flex items-center justify-between text-xs ${
+                          isPurchased
+                            ? "bg-emerald-950/20 border-emerald-800/40 text-slate-200"
+                            : "bg-slate-950 border-slate-800 text-slate-400"
+                        }`}
+                      >
+                        <div>
+                          <div className="font-bold text-sm text-white flex flex-wrap items-center gap-1.5">
+                            <span>{sub.name}</span>
+                            {sub.academicLevel?.name && (
+                              <span className="text-[10px] text-amber-300 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/40">
+                                {sub.academicLevel.name}
+                              </span>
+                            )}
+                            {sub.department && (
+                              <span className="text-[10px] text-blue-400 bg-blue-950/60 px-2 py-0.5 rounded border border-blue-800/40">
+                                {DEPT_LABELS[sub.department] || sub.department}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-400 mt-0.5">
+                            سعر المادة: <span className="font-mono text-emerald-400">{sub.price} ج.م</span> • الترم {sub.term}
+                          </div>
+                        </div>
+
+                        <div>
+                          {isPurchased ? (
+                            <button
+                              disabled={isThisLoading}
+                              onClick={() => handleToggleSubject(selectedStudentForSubjects.id, sub.id, false)}
+                              className="px-3.5 py-2 bg-emerald-600/20 hover:bg-red-600 text-emerald-400 hover:text-white border border-emerald-600/40 hover:border-red-600 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 whitespace-nowrap"
+                              title="المادة مفعلة للطالب، انقر لإلغاء تفعيلها وقفلها"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>{isThisLoading ? "جاري القفل..." : "مفعلة (انقر للقفل)"}</span>
+                            </button>
+                          ) : (
+                            <button
+                              disabled={isThisLoading}
+                              onClick={() => handleToggleSubject(selectedStudentForSubjects.id, sub.id, true)}
+                              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-blue-600/20 transition-all flex items-center gap-1.5 whitespace-nowrap"
+                              title="انقر لشحن وفتح المادة للطالب فوراً"
+                            >
+                              <PlusCircle className="w-3.5 h-3.5" />
+                              <span>{isThisLoading ? "جاري الشحن..." : "فتح وشحن المادة"}</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 flex justify-end">
+                <button
+                  onClick={() => setSelectedStudentForSubjects(null)}
+                  className="px-5 py-2 bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-medium"
+                >
+                  إغلاق
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* 3. مودال تغيير الجيميل المربوط */}
       {selectedStudentForEmail && (
