@@ -9,7 +9,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { name, phone, academicLevelId, deviceFingerprint, deviceName } = body;
 
-    const email = session?.user?.email || body.email;
+    // حظر ثغرة التلاعب بالحسابات: الاعتماد الحصري فقط على جلسة المصادقة الموثقة
+    const email = session?.user?.email;
 
     if (!email) {
       return NextResponse.json(

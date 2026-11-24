@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import {
   LayoutDashboard,
@@ -20,17 +20,49 @@ import {
 } from "lucide-react";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const pathname = usePathname();
-  const { data: session } = useSession();
+  const { data: session, status: authStatus } = useSession();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [lockedCount, setLockedCount] = useState(0);
 
+  const userEmail = session?.user?.email?.toLowerCase().trim();
+  const isAdmin =
+    (session?.user as any)?.role === "ADMIN" &&
+    (userEmail === "ahmadmhmd23456@gmail.com" || userEmail === "eng.teacher@gmail.com");
+
   useEffect(() => {
-    fetch("/api/admin/locked-accounts/count")
-      .then((res) => res.json())
-      .then((data) => setLockedCount(data.count || 0))
-      .catch(() => {});
-  }, [pathname]);
+    if (authStatus === "authenticated" && !isAdmin) {
+      router.push("/student/courses");
+    }
+  }, [authStatus, isAdmin, router]);
+
+  useEffect(() => {
+    if (isAdmin) {
+      fetch("/api/admin/locked-accounts/count")
+        .then((res) => res.json())
+        .then((data) => setLockedCount(data.count || 0))
+        .catch(() => {});
+    }
+  }, [pathname, isAdmin]);
+
+  if (authStatus === "authenticated" && !isAdmin) {
+    return (
+      <div className="min-h-screen bg-[#070b14] flex items-center justify-center p-4 text-center" dir="rtl">
+        <div className="bg-slate-900 border border-red-500/30 p-8 rounded-3xl max-w-md shadow-2xl">
+          <ShieldAlert className="w-12 h-12 text-red-500 mx-auto mb-3" />
+          <h2 className="text-lg font-bold text-white mb-2">منطقة إدارية محظورة</h2>
+          <p className="text-xs text-slate-400 mb-5">هذه اللوحة مخصصة لإدارة المنصة فقط. ليس لديك صلاحيات المسؤول.</p>
+          <button
+            onClick={() => router.push("/student/courses")}
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-600/25"
+          >
+            الرجوع إلى حسابي
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const navItems = [
     { label: "لوحة التحكم", href: "/admin/dashboard", icon: LayoutDashboard },

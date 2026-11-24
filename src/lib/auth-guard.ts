@@ -62,7 +62,8 @@ export async function requireAdmin(): Promise<GuardResult> {
     };
   }
 
-  const isAdmin = user.role === "ADMIN" || isPlatformAdmin(user.email);
+  // حماية صارمة لا تقبل التجاوز: التحقق من القائمة البيضاء المعتمدة للأدمن
+  const isAdmin = isPlatformAdmin(user.email);
 
   if (!isAdmin) {
     return {

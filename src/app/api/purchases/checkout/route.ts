@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions, isPlatformAdmin } from "@/lib/auth";
 import { createPaymobOrder } from "@/lib/paymob";
 import { sendPaymentSuccessWhatsApp } from "@/lib/whatsapp";
 
@@ -43,8 +43,10 @@ export async function POST(req: NextRequest) {
 
     const amount = Number(subject.price);
 
-    // إذا طلب تجربة الدفع الفوري (محاكاة بيئة التطوير)
-    if (isDemoInstantPay || !process.env.PAYMOB_API_KEY) {
+    const isUserAdmin = isPlatformAdmin(user.email);
+
+    // حظر الثغرة: الدفع الفوري التجريبي محصور فقط وحصرياً للأدمن المعتمد للاختبار
+    if (isUserAdmin && isDemoInstantPay) {
       const mockTrxId = "TRX_MOCK_" + Date.now();
       const purchase = await prisma.purchase.upsert({
         where: {

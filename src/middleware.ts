@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { getToken } from "next-auth/jwt";
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // 1. فحص حماية CSRF على الطلبات التي تغيّر البيانات (POST, PUT, DELETE, PATCH)
@@ -50,15 +51,38 @@ export function middleware(request: NextRequest) {
   }
 
   // 2. حماية مسارات الإدارة والحسابات الحساسة
+  if (pathname.startsWith("/admin")) {
+    const token = await getToken({
+      req: request,
+      secret: process.env.NEXTAUTH_SECRET,
+    });
+
+    if (!token) {
+      const loginUrl = new URL("/login", request.url);
+      loginUrl.searchParams.set("callbackUrl", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+
+    const adminEmails = [
+      "eng.teacher@gmail.com",
+      "ahmadmhmd23456@gmail.com",
+      process.env.ADMIN_EMAIL?.toLowerCase().trim(),
+    ].filter(Boolean);
+
+    const isAuthorizedAdmin =
+      token.role === "ADMIN" &&
+      token.email &&
+      adminEmails.includes((token.email as string).toLowerCase().trim());
+
+    if (!isAuthorizedAdmin) {
+      // حظر وتوجيه أي طالب أو مستخدم غير مصرح يحاول فتح صفحات الإدارة
+      return NextResponse.redirect(new URL("/student/courses", request.url));
+    }
+  }
+
   const hasSessionToken =
     request.cookies.has("__Secure-next-auth.session-token") ||
     request.cookies.has("next-auth.session-token");
-
-  if (pathname.startsWith("/admin") && !hasSessionToken) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("callbackUrl", pathname);
-    return NextResponse.redirect(loginUrl);
-  }
 
   if (pathname.startsWith("/account") && !hasSessionToken) {
     const loginUrl = new URL("/login", request.url);

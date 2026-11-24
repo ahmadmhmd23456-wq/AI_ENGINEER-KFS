@@ -253,65 +253,6 @@ export const authOptions: NextAuthOptions = {
       clientSecret:
         process.env.GOOGLE_CLIENT_SECRET || "demo-google-client-secret",
     }),
-
-    // 3. مزود الدخول السريع للاختبار المحلي
-    CredentialsProvider({
-      id: "demo-login",
-      name: "الدخول التجريبي المباشر",
-      credentials: {
-        email: { label: "البريد الإلكتروني", type: "email" },
-        role: { label: "الدور", type: "text" },
-        deviceFingerprint: { label: "بصمة الجهاز", type: "text" },
-      },
-      async authorize(credentials) {
-        if (!credentials?.email) return null;
-
-        const email = credentials.email.toLowerCase().trim();
-        const adminEmail = (
-          process.env.ADMIN_EMAIL || "eng.teacher@gmail.com"
-        )
-          .toLowerCase()
-          .trim();
-
-        let user = await prisma.user.findUnique({
-          where: { email },
-          include: { academicLevel: true },
-        });
-
-        if (!user) {
-          const isAdmin = email === adminEmail || credentials.role === "ADMIN";
-          user = await prisma.user.create({
-            data: {
-              email,
-              name: isAdmin ? "د. محمد المهندس (الأدمن)" : "طالب تجريبي",
-              role: isAdmin ? "ADMIN" : "STUDENT",
-              status: "ACTIVE",
-              phone: isAdmin ? "01012345678" : "01123456789",
-              phoneType: "Samsung Galaxy A54",
-              initialEmail: email,
-              initialPhone: isAdmin ? "01012345678" : "01123456789",
-              phoneVerified: new Date(),
-              emailVerified: new Date(),
-            },
-            include: { academicLevel: true },
-          });
-        }
-
-        if (user.status === "LOCKED") {
-          throw new Error("ACCOUNT_LOCKED");
-        }
-
-        return {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          status: user.status,
-          phone: user.phone,
-          academicLevelId: user.academicLevelId,
-        };
-      },
-    }),
   ],
   callbacks: {
     async signIn({ user }) {
@@ -333,7 +274,8 @@ export const authOptions: NextAuthOptions = {
       // تدوير معرّف الجلسة (Session ID Rotation) لمنع هجمات Session Fixation
       if (user) {
         token.id = user.id;
-        token.role = isPlatformAdmin(user.email) ? "ADMIN" : (user as any).role;
+        // حماية صارمة: صلاحية الأدمن حصرية فقط للإيميلات المعتمدة في ADMIN_EMAILS
+        token.role = isPlatformAdmin(user.email) ? "ADMIN" : "STUDENT";
         token.status = (user as any).status;
         token.phone = (user as any).phone;
         token.academicLevelId = (user as any).academicLevelId;

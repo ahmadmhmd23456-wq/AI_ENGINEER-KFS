@@ -56,8 +56,8 @@ export async function POST(req: NextRequest) {
         message: sent
           ? "تم إرسال رمز التحقق بنجاح إلى الواتساب"
           : "تم تجهيز الرمز (وضع المحاكاة/التطوير)",
-        // في وضع التطوير المحلي بدون Meta API، نعيد الرمز لتسهيل الاختبار الفوري
-        devOtp: process.env.NODE_ENV === "development" || !process.env.WHATSAPP_ACCESS_TOKEN ? rawCode : undefined,
+        // حظر تسريب الرمز: لا يُعاد الرمز أبداً في الإنتاج تحت أي ظرف
+        devOtp: process.env.NODE_ENV === "development" && process.env.ENABLE_DEV_OTP === "true" ? rawCode : undefined,
       });
     }
 
