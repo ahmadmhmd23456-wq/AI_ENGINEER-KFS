@@ -26,6 +26,7 @@ import {
   playWhoosh,
   playTargetLock,
 } from "@/lib/sound";
+import { formatDurationArabic, formatDurationCompact } from "@/lib/video-helper";
 
 export default function SubjectContentPage({
   params,
@@ -229,7 +230,7 @@ export default function SubjectContentPage({
                 <div className="mt-4 p-4 bg-slate-900 border border-slate-800 rounded-2xl">
                   <h3 className="text-base font-bold text-white mb-1">{selectedVideo.title}</h3>
                   <p className="text-xs text-slate-400">
-                    مدة المحاضرة: {Math.floor(selectedVideo.durationSeconds / 60)} دقيقة • مشغل آمن
+                    مدة المحاضرة: {formatDurationArabic(selectedVideo.durationSeconds)} • مشغل آمن
                   </p>
                 </div>
               </div>
@@ -271,7 +272,7 @@ export default function SubjectContentPage({
                           <span className="truncate">{vid.title}</span>
                         </div>
                         <span className="text-[10px] opacity-75 font-mono">
-                          {Math.floor(vid.durationSeconds / 60)} د
+                          {formatDurationCompact(vid.durationSeconds)}
                         </span>
                       </button>
                     );

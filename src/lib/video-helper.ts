@@ -105,3 +105,198 @@ export function generateVideoEmbedUrl(provider: string, videoId: string): string
     return videoId;
   }
 }
+
+/**
+ * تحويل مدة ISO 8601 (مثل PT1H23M45S) إلى ثوانٍ
+ */
+export function parseIsoDuration(iso: string): number | null {
+  if (!iso) return null;
+  const match = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/i);
+  if (!match) return null;
+  const hours = parseInt(match[1] || "0", 10);
+  const minutes = parseInt(match[2] || "0", 10);
+  const seconds = parseInt(match[3] || "0", 10);
+  const total = hours * 3600 + minutes * 60 + seconds;
+  return total > 0 ? total : null;
+}
+
+/**
+ * تنسيق المدة باللغة العربية بشكل واضح ودقيق (ثوانٍ / دقائق / ساعات)
+ */
+export function formatDurationArabic(totalSeconds: number): string {
+  const sec = Math.max(0, Math.round(totalSeconds || 0));
+  if (sec === 0) return "غير محددة";
+  if (sec < 60) return `${sec} ثانية`;
+
+  const hours = Math.floor(sec / 3600);
+  const minutes = Math.floor((sec % 3600) / 60);
+  const remSeconds = sec % 60;
+
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours} ساعة`);
+  if (minutes > 0) parts.push(`${minutes} دقيقة`);
+  if (hours === 0 && minutes < 10 && remSeconds > 0) {
+    parts.push(`${remSeconds} ثانية`);
+  }
+  return parts.join(" و ");
+}
+
+/**
+ * تنسيق المدة بصيغة رقمية مختصرة (مثل 15:20 أو 1:15:00)
+ */
+export function formatDurationCompact(totalSeconds: number): string {
+  const sec = Math.max(0, Math.round(totalSeconds || 0));
+  const hours = Math.floor(sec / 3600);
+  const minutes = Math.floor((sec % 3600) / 60);
+  const remSeconds = sec % 60;
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  if (hours > 0) {
+    return `${hours}:${pad(minutes)}:${pad(remSeconds)}`;
+  }
+  return `${minutes}:${pad(remSeconds)}`;
+}
+
+/**
+ * جلب بيانات ومدة الفيديو تلقائياً (يوتيوب أو Bunny Stream)
+ */
+export async function fetchVideoMetadata(
+  input: string,
+  preferredProvider: string = "YOUTUBE"
+): Promise<{
+  provider: "YOUTUBE" | "BUNNY" | "GOOGLE_DRIVE" | "DIRECT";
+  videoId: string;
+  durationSeconds: number | null;
+  title: string | null;
+}> {
+  const detected = detectVideoProvider(input, preferredProvider);
+  let durationSeconds: number | null = null;
+  let title: string | null = null;
+
+  if (detected.provider === "YOUTUBE") {
+    const ytId = detected.videoId;
+
+    // 1. محاولة جلب البيانات عبر صفحة يوتيوب الرسمية (سريعة ولا تتطلب مفتاح API)
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      const res = await fetch(`https://www.youtube.com/watch?v=${encodeURIComponent(ytId)}&hl=en`, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+
+      if (res.ok) {
+        const html = await res.text();
+        const metaMatch = html.match(/itemprop="duration"\s+content="([^"]+)"/i);
+        if (metaMatch?.[1]) {
+          durationSeconds = parseIsoDuration(metaMatch[1]);
+        }
+        if (!durationSeconds) {
+          const lengthMatch = html.match(/"lengthSeconds":"(\d+)"/);
+          if (lengthMatch?.[1]) {
+            durationSeconds = parseInt(lengthMatch[1], 10);
+          }
+        }
+        if (!durationSeconds) {
+          const approxMatch = html.match(/"approxDurationMs":"(\d+)"/);
+          if (approxMatch?.[1]) {
+            durationSeconds = Math.round(parseInt(approxMatch[1], 10) / 1000);
+          }
+        }
+      }
+    } catch {
+      // المتابعة للبديل التالي
+    }
+
+    // 2. بديل احتياطي عبر YouTube Innertube API إذا لم تنجح الطريقة الأولى
+    if (!durationSeconds) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 5000);
+        const innertubeRes = await fetch("https://www.youtube.com/youtubei/v1/player?prettyPrint=false", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            videoId: ytId,
+            context: {
+              client: {
+                clientName: "ANDROID",
+                clientVersion: "19.09.37",
+                androidSdkVersion: 30,
+                hl: "en",
+                gl: "US",
+              },
+            },
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+
+        if (innertubeRes.ok) {
+          const data = await innertubeRes.json();
+          const len = data?.videoDetails?.lengthSeconds;
+          if (len) durationSeconds = parseInt(String(len), 10);
+          if (data?.videoDetails?.title) title = String(data.videoDetails.title);
+        }
+      } catch {
+        // تجاهل
+      }
+    }
+
+    // 3. جلب العنوان عبر YouTube oEmbed إن لم يتوفر
+    if (!title) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 3500);
+        const oembedRes = await fetch(
+          `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(ytId)}&format=json`,
+          { signal: controller.signal }
+        );
+        clearTimeout(timer);
+        if (oembedRes.ok) {
+          const oembedData = await oembedRes.json();
+          if (oembedData?.title) title = String(oembedData.title);
+        }
+      } catch {
+        // تجاهل
+      }
+    }
+  } else if (detected.provider === "BUNNY") {
+    const apiKey = process.env.BUNNY_API_KEY;
+    const libraryId = process.env.BUNNY_LIBRARY_ID;
+    if (apiKey && libraryId) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 5000);
+        const bunnyRes = await fetch(
+          `https://video.bunnycdn.com/library/${libraryId}/videos/${encodeURIComponent(detected.videoId)}`,
+          {
+            headers: { AccessKey: apiKey },
+            signal: controller.signal,
+          }
+        );
+        clearTimeout(timer);
+        if (bunnyRes.ok) {
+          const bData = await bunnyRes.json();
+          if (typeof bData?.length === "number" && bData.length > 0) {
+            durationSeconds = Math.round(bData.length);
+          }
+          if (bData?.title) title = String(bData.title);
+        }
+      } catch {
+        // تجاهل
+      }
+    }
+  }
+
+  return {
+    provider: detected.provider,
+    videoId: detected.videoId,
+    durationSeconds: durationSeconds && durationSeconds > 0 ? durationSeconds : null,
+    title,
+  };
+}

@@ -18,8 +18,9 @@ import {
   Sparkles,
   ExternalLink,
   ShieldCheck,
+  Edit2,
 } from "lucide-react";
-import { extractYoutubeId } from "@/lib/video-helper";
+import { extractYoutubeId, formatDurationArabic } from "@/lib/video-helper";
 
 export default function AdminSubjectContentPage({
   params,
@@ -39,13 +40,49 @@ export default function AdminSubjectContentPage({
   const [lessonDesc, setLessonDesc] = useState("");
   const [publishAt, setPublishAt] = useState("");
 
-  // مودال إضافة فيديو
+  // مودال إضافة / تعديل فيديو
   const [activeLessonForVideo, setActiveLessonForVideo] = useState<string | null>(null);
+  const [editingVideoId, setEditingVideoId] = useState<string | null>(null);
   const [videoTitle, setVideoTitle] = useState("");
   const [videoProvider, setVideoProvider] = useState<"YOUTUBE" | "BUNNY" | "DIRECT" | "GOOGLE_DRIVE">("YOUTUBE");
   const [videoUrlOrId, setVideoUrlOrId] = useState("");
   const [videoDuration, setVideoDuration] = useState("60");
+  const [detectedDurationSeconds, setDetectedDurationSeconds] = useState<number | null>(null);
+  const [isDetectingDuration, setIsDetectingDuration] = useState(false);
+  const [detectedVideoTitle, setDetectedVideoTitle] = useState<string | null>(null);
+  const [manualDurationEdited, setManualDurationEdited] = useState(false);
   const [isPreviewFree, setIsPreviewFree] = useState(false);
+
+  const resetVideoModal = () => {
+    setActiveLessonForVideo(null);
+    setEditingVideoId(null);
+    setVideoTitle("");
+    setVideoUrlOrId("");
+    setVideoDuration("60");
+    setDetectedDurationSeconds(null);
+    setIsDetectingDuration(false);
+    setDetectedVideoTitle(null);
+    setManualDurationEdited(false);
+    setIsPreviewFree(false);
+  };
+
+  const openAddVideoModal = (lessonId: string) => {
+    resetVideoModal();
+    setActiveLessonForVideo(lessonId);
+  };
+
+  const openEditVideoModal = (lessonId: string, vid: any) => {
+    resetVideoModal();
+    setActiveLessonForVideo(lessonId);
+    setEditingVideoId(vid.id);
+    setVideoTitle(vid.title || "");
+    setVideoProvider((vid.provider as any) || "YOUTUBE");
+    setVideoUrlOrId(vid.videoId || "");
+    const sec = vid.durationSeconds || 3600;
+    setVideoDuration(sec < 60 ? String(Number((sec / 60).toFixed(1))) : String(Math.round(sec / 60)));
+    setDetectedDurationSeconds(sec);
+    setIsPreviewFree(Boolean(vid.isPreviewFree));
+  };
 
   // مودال إضافة ملف PDF
   const [activeLessonForFile, setActiveLessonForFile] = useState<string | null>(null);
@@ -95,32 +132,131 @@ export default function AdminSubjectContentPage({
     }
   };
 
+  // اكتشاف مدة المحاضرة تلقائياً فور لصق الرابط أو إدخال المعرّف
+  useEffect(() => {
+    if (!activeLessonForVideo) return;
+    const raw = videoUrlOrId.trim();
+    if (!raw) {
+      setDetectedDurationSeconds(null);
+      setDetectedVideoTitle(null);
+      setIsDetectingDuration(false);
+      return;
+    }
+
+    const ytId = extractYoutubeId(raw);
+    const isDirectMedia = /^https?:\/\/.+\.(mp4|webm|ogg)(\?.*)?$/i.test(raw);
+    const isBunnyGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw);
+
+    if (!ytId && !isDirectMedia && !isBunnyGuid) {
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setIsDetectingDuration(true);
+
+      if (isDirectMedia) {
+        try {
+          const probe = document.createElement("video");
+          probe.preload = "metadata";
+          probe.onloadedmetadata = () => {
+            if (cancelled) return;
+            const sec = Math.round(probe.duration || 0);
+            if (sec > 0 && Number.isFinite(sec)) {
+              setDetectedDurationSeconds(sec);
+              if (!manualDurationEdited) {
+                setVideoDuration(sec < 60 ? String(Number((sec / 60).toFixed(1))) : String(Math.round(sec / 60)));
+              }
+            }
+            setIsDetectingDuration(false);
+          };
+          probe.onerror = () => {
+            if (!cancelled) setIsDetectingDuration(false);
+          };
+          probe.src = raw;
+        } catch {
+          if (!cancelled) setIsDetectingDuration(false);
+        }
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/admin/video-meta", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ urlOrId: raw, provider: videoProvider }),
+        });
+        const data = await res.json();
+        if (cancelled) return;
+
+        if (data?.title) {
+          setDetectedVideoTitle(data.title);
+        }
+
+        if (data?.durationSeconds && data.durationSeconds > 0) {
+          const sec = data.durationSeconds;
+          setDetectedDurationSeconds(sec);
+          if (!manualDurationEdited) {
+            setVideoDuration(sec < 60 ? String(Number((sec / 60).toFixed(1))) : String(Math.round(sec / 60)));
+          }
+        }
+      } catch {
+        // تجاهل خطأ الشبكة
+      } finally {
+        if (!cancelled) setIsDetectingDuration(false);
+      }
+    }, 450);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [activeLessonForVideo, videoUrlOrId, videoProvider, manualDurationEdited]);
+
   const handleAddVideo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeLessonForVideo || !videoUrlOrId.trim()) return;
+
+    const durationSecondsToSave =
+      !manualDurationEdited && detectedDurationSeconds && detectedDurationSeconds > 0
+        ? detectedDurationSeconds
+        : Math.max(1, Math.round((parseFloat(videoDuration) || 60) * 60));
+
     try {
       const res = await fetch("/api/admin/lessons", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "ADD_VIDEO",
-          lessonId: activeLessonForVideo,
-          videoData: {
-            title: videoTitle,
-            videoId: videoUrlOrId.trim(),
-            provider: videoProvider,
-            durationSeconds: (parseInt(videoDuration) || 60) * 60,
-            isPreviewFree,
-          },
-        }),
+        body: JSON.stringify(
+          editingVideoId
+            ? {
+                action: "UPDATE_VIDEO",
+                videoRecordId: editingVideoId,
+                videoData: {
+                  title: videoTitle,
+                  videoId: videoUrlOrId.trim(),
+                  provider: videoProvider,
+                  durationSeconds: durationSecondsToSave,
+                  autoDetectDuration: !manualDurationEdited && !detectedDurationSeconds,
+                  isPreviewFree,
+                },
+              }
+            : {
+                action: "ADD_VIDEO",
+                lessonId: activeLessonForVideo,
+                videoData: {
+                  title: videoTitle,
+                  videoId: videoUrlOrId.trim(),
+                  provider: videoProvider,
+                  durationSeconds: durationSecondsToSave,
+                  autoDetectDuration: !manualDurationEdited && !detectedDurationSeconds,
+                  isPreviewFree,
+                },
+              }
+        ),
       });
 
       if (res.ok) {
-        setActiveLessonForVideo(null);
-        setVideoTitle("");
-        setVideoUrlOrId("");
-        setVideoDuration("60");
-        setIsPreviewFree(false);
+        resetVideoModal();
         fetchContent();
       } else {
         const data = await res.json();
@@ -228,7 +364,7 @@ export default function AdminSubjectContentPage({
 
                 <div className="flex items-center gap-2 self-end sm:self-auto">
                   <button
-                    onClick={() => setActiveLessonForVideo(lesson.id)}
+                    onClick={() => openAddVideoModal(lesson.id)}
                     className="px-3 py-1.5 bg-blue-600/15 hover:bg-blue-600 text-blue-300 hover:text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all"
                   >
                     <Plus className="w-3.5 h-3.5" />
@@ -298,18 +434,28 @@ export default function AdminSubjectContentPage({
                                 </span>
                               )}
                               <span className="text-slate-400 font-mono">
-                                {Math.floor((vid.durationSeconds || 0) / 60)} دقيقة
+                                {formatDurationArabic(vid.durationSeconds || 0)}
                               </span>
                             </div>
                           </div>
                         </div>
 
-                        <button
-                          onClick={() => handleDeleteItem("VIDEO", vid.id)}
-                          className="p-1 text-slate-500 hover:text-red-400"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => openEditVideoModal(lesson.id, vid)}
+                            className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all"
+                            title="تعديل الفيديو أو تحديث مدته"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteItem("VIDEO", vid.id)}
+                            className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+                            title="حذف الفيديو"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -434,12 +580,7 @@ export default function AdminSubjectContentPage({
           <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl relative max-h-[92vh] overflow-y-auto">
               <button
-                onClick={() => {
-                  setActiveLessonForVideo(null);
-                  setVideoTitle("");
-                  setVideoUrlOrId("");
-                  setIsPreviewFree(false);
-                }}
+                onClick={resetVideoModal}
                 className="absolute top-5 left-5 text-slate-400 hover:text-white"
               >
                 <X className="w-5 h-5" />
@@ -450,8 +591,12 @@ export default function AdminSubjectContentPage({
                   <Video className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">إرفاق فيديو للمحاضرة</h3>
-                  <p className="text-[11px] text-slate-400">اختر طريقة رفع أو ربط الفيديو المناسبة لك</p>
+                  <h3 className="text-base font-bold text-white">
+                    {editingVideoId ? "تعديل بيانات ومدة الفيديو" : "إرفاق فيديو للمحاضرة"}
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    بمجرد لصق الرابط يتم حساب وقت المحاضرة تلقائياً وتحديثه
+                  </p>
                 </div>
               </div>
 
@@ -521,6 +666,16 @@ export default function AdminSubjectContentPage({
                     placeholder="مثال: شرح الباب الأول - مقدمة وتأسيس"
                     className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-blue-500"
                   />
+                  {detectedVideoTitle && !videoTitle.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => setVideoTitle(detectedVideoTitle)}
+                      className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-[11px] text-blue-300 transition-all"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>استخدام عنوان الفيديو: {detectedVideoTitle}</span>
+                    </button>
+                  )}
                 </div>
 
                 {videoProvider === "YOUTUBE" && (
@@ -598,16 +753,34 @@ export default function AdminSubjectContentPage({
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-slate-300 font-medium mb-1">المدة التقريبية (بالدقائق):</label>
+                    <label className="block text-slate-300 font-medium mb-1">
+                      مدة المحاضرة (بالدقائق):
+                    </label>
                     <input
                       type="number"
+                      step="any"
+                      min="0.1"
                       value={videoDuration}
-                      onChange={(e) => setVideoDuration(e.target.value)}
-                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl font-mono text-white"
+                      onChange={(e) => {
+                        setManualDurationEdited(true);
+                        setVideoDuration(e.target.value);
+                      }}
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl font-mono text-white focus:outline-none focus:border-emerald-500"
                     />
+                    {isDetectingDuration ? (
+                      <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-blue-400">
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                        <span>جاري حساب وقت المحاضرة تلقائياً...</span>
+                      </div>
+                    ) : detectedDurationSeconds && !manualDurationEdited ? (
+                      <div className="mt-1.5 flex items-center gap-1 text-[10px] text-emerald-400 font-semibold">
+                        <Clock className="w-3 h-3" />
+                        <span>تم الضبط تلقائياً: {formatDurationArabic(detectedDurationSeconds)}</span>
+                      </div>
+                    ) : null}
                   </div>
 
-                  <div className="flex flex-col justify-end">
+                  <div className="flex flex-col justify-start pt-5">
                     <label className="flex items-center gap-2 p-2.5 bg-slate-950 border border-slate-800 rounded-xl cursor-pointer hover:border-slate-700">
                       <input
                         type="checkbox"
@@ -623,12 +796,7 @@ export default function AdminSubjectContentPage({
                 <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
                   <button
                     type="button"
-                    onClick={() => {
-                      setActiveLessonForVideo(null);
-                      setVideoTitle("");
-                      setVideoUrlOrId("");
-                      setIsPreviewFree(false);
-                    }}
+                    onClick={resetVideoModal}
                     className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-medium"
                   >
                     إلغاء
@@ -638,7 +806,7 @@ export default function AdminSubjectContentPage({
                     className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-lg shadow-blue-600/25"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>حفظ الفيديو</span>
+                    <span>{editingVideoId ? "حفظ التعديلات" : "حفظ الفيديو"}</span>
                   </button>
                 </div>
               </form>

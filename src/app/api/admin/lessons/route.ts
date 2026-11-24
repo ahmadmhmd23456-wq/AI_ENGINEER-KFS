@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-guard";
-import { detectVideoProvider } from "@/lib/video-helper";
+import { detectVideoProvider, fetchVideoMetadata } from "@/lib/video-helper";
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,6 +36,14 @@ export async function POST(req: NextRequest) {
       }
 
       const detected = detectVideoProvider(videoData.videoId, videoData.provider || "YOUTUBE");
+      let finalDurationSeconds = videoData.durationSeconds ? parseInt(String(videoData.durationSeconds), 10) : 0;
+
+      if (!finalDurationSeconds || videoData.autoDetectDuration) {
+        const meta = await fetchVideoMetadata(videoData.videoId, videoData.provider || "YOUTUBE");
+        if (meta.durationSeconds) {
+          finalDurationSeconds = meta.durationSeconds;
+        }
+      }
 
       const video = await prisma.video.create({
         data: {
@@ -43,12 +51,49 @@ export async function POST(req: NextRequest) {
           title: videoData.title,
           videoId: detected.videoId,
           provider: detected.provider,
-          durationSeconds: videoData.durationSeconds ? parseInt(videoData.durationSeconds) : 3600,
+          durationSeconds: finalDurationSeconds > 0 ? finalDurationSeconds : 3600,
           isPreviewFree: videoData.isPreviewFree || false,
         },
       });
 
       return NextResponse.json({ success: true, video });
+    }
+
+    // 2.5 تعديل بيانات أو رابط أو مدة فيديو موجود (مع اكتشاف المدة تلقائياً)
+    if (action === "UPDATE_VIDEO") {
+      const { videoRecordId } = body;
+      if (!videoRecordId) {
+        return NextResponse.json({ error: "معرف الفيديو مطلوب" }, { status: 400 });
+      }
+
+      const existing = await prisma.video.findUnique({ where: { id: videoRecordId } });
+      if (!existing) {
+        return NextResponse.json({ error: "الفيديو غير موجود" }, { status: 404 });
+      }
+
+      const rawInput = videoData?.videoId?.trim() || existing.videoId;
+      const detected = detectVideoProvider(rawInput, videoData?.provider || existing.provider);
+      let finalDurationSeconds = videoData?.durationSeconds ? parseInt(String(videoData.durationSeconds), 10) : 0;
+
+      if (!finalDurationSeconds || videoData?.autoDetectDuration) {
+        const meta = await fetchVideoMetadata(rawInput, videoData?.provider || existing.provider);
+        if (meta.durationSeconds) {
+          finalDurationSeconds = meta.durationSeconds;
+        }
+      }
+
+      const updated = await prisma.video.update({
+        where: { id: videoRecordId },
+        data: {
+          title: videoData?.title ?? existing.title,
+          videoId: detected.videoId,
+          provider: detected.provider,
+          durationSeconds: finalDurationSeconds > 0 ? finalDurationSeconds : existing.durationSeconds,
+          isPreviewFree: videoData?.isPreviewFree !== undefined ? videoData.isPreviewFree : existing.isPreviewFree,
+        },
+      });
+
+      return NextResponse.json({ success: true, video: updated });
     }
 
     // 3. ربط ملف PDF بحصة معينة (Cloudflare R2 / S3)
