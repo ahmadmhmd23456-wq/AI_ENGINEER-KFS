@@ -320,19 +320,29 @@ function LoginForm() {
                 </button>
               )}
               {mode === "LOGIN" && errorMessage.includes("غير صحيحة") && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    playCyberClick();
-                    setMode("REGISTER");
-                    if (loginIdentifier.includes("@")) setEmail(loginIdentifier);
-                    else if (loginIdentifier.startsWith("01")) setPhone(loginIdentifier);
-                    setErrorMessage(null);
-                  }}
-                  className="text-xs text-blue-400 hover:text-blue-300 font-bold underline text-right transition-colors"
-                >
-                  طالب جديد وتريد التسجيل؟ اضغط هنا لإنشاء حساب جديد ←
-                </button>
+                <div className="flex flex-col gap-1.5 pt-1 border-t border-red-500/20">
+                  <a
+                    href="https://wa.me/201065375309?text=%D8%A7%D9%84%D8%B3%D9%84%D8%A7%D9%85%20%D8%B9%D9%84%D9%8A%D9%83%D9%85%20%D9%85%2F%D8%A3%D8%AD%D9%85%D8%AF%D8%8C%20%D9%86%D8%B3%D9%8A%D8%AA%20%D9%83%D9%84%D9%85%D8%A9%20%D8%A7%D9%84%D9%85%D8%B1%D9%88%D8%B1%20%D9%84%D8%AD%D8%B3%D8%A7%D8%A8%D9%8A%20%D8%B9%D9%84%D9%89%20%D9%85%D9%86%D8%B5%D8%A9%20%D9%87%D9%86%D8%AF%D8%B3%D8%A9"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-emerald-400 hover:text-emerald-300 font-bold underline text-right transition-colors"
+                  >
+                    لو نسيت كلمة السر تواصل مع م/احمد عبر الواتساب ←
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playCyberClick();
+                      setMode("REGISTER");
+                      if (loginIdentifier.includes("@")) setEmail(loginIdentifier);
+                      else if (loginIdentifier.startsWith("01")) setPhone(loginIdentifier);
+                      setErrorMessage(null);
+                    }}
+                    className="text-xs text-blue-400 hover:text-blue-300 font-bold underline text-right transition-colors"
+                  >
+                    طالب جديد وتريد التسجيل؟ اضغط هنا لإنشاء حساب جديد ←
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -484,10 +494,12 @@ function LoginForm() {
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-xs font-medium text-slate-300">كلمة المرور الحالية</label>
                   <a
-                    href="/forgot-password"
-                    className="text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
+                    href="https://wa.me/201065375309?text=%D8%A7%D9%84%D8%B3%D9%84%D8%A7%D9%85%20%D8%B9%D9%84%D9%8A%D9%83%D9%85%20%D9%85%2F%D8%A3%D8%AD%D9%85%D8%AF%D8%8C%20%D9%86%D8%B3%D9%8A%D8%AA%20%D9%83%D9%84%D9%85%D8%A9%20%D8%A7%D9%84%D9%85%D8%B1%D9%88%D8%B1%20%D9%84%D8%AD%D8%B3%D8%A7%D8%A8%D9%8A%20%D8%B9%D9%84%D9%89%20%D9%85%D9%86%D8%B5%D8%A9%20%D9%87%D9%86%D8%AF%D8%B3%D8%A9"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] text-emerald-400 hover:text-emerald-300 transition-colors font-semibold hover:underline"
                   >
-                    نسيت كلمة المرور؟
+                    لو نسيت كلمة السر تواصل مع م/احمد
                   </a>
                 </div>
                 <input
