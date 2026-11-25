@@ -68,10 +68,12 @@ export default function StudentExamPage({
   const answersRef = useRef<Record<string, string>>({});
   answersRef.current = answers;
   const lastViolationAtRef = useRef<number>(0);
+  const forcedSubmitRef = useRef<boolean>(false);
 
   // النتيجة النهائية
   const [isFinished, setIsFinished] = useState(false);
   const [resultData, setResultData] = useState<any | null>(null);
+  const [autoSubmittedReason, setAutoSubmittedReason] = useState<string | null>(null);
   const [reviewFilter, setReviewFilter] = useState<"ALL" | "WRONG" | "CORRECT">("ALL");
 
   // 1. بدء أو استئناف الامتحان
@@ -141,29 +143,43 @@ export default function StudentExamPage({
     return () => clearInterval(interval);
   }, [serverDueTime, isFinished]);
 
-  // 3. منظومة حماية الامتحان الشاملة (منع لقطة الشاشة، التعتيم الفوري، منع النسخ والطباعة وأدوات المطور)
+  // 3. منظومة حماية الامتحان الشاملة (التسليم التلقائي الفوري عند أخذ لقطة شاشة أو الخروج من الامتحان)
   useEffect(() => {
     if (isFinished || !attemptId) return;
 
-    const triggerProtectionShield = (reason: string, recordViolation = true) => {
-      setIsScreenProtected(true);
-      setProtectionReason(reason);
-      setCheatWarning(true);
+    const mountedAt = Date.now();
 
-      const now = Date.now();
-      if (recordViolation && now - lastViolationAtRef.current > 2000) {
-        lastViolationAtRef.current = now;
-        playTargetLock();
-        setTabSwitchCount((prev) => prev + 1);
-        fetch("/api/exams/save", {
+    const forceSubmitOnViolation = async (reason: string) => {
+      if (forcedSubmitRef.current) return;
+      forcedSubmitRef.current = true;
+
+      playTargetLock();
+      setIsScreenProtected(true);
+      setProtectionReason(`${reason} — جاري تسليم الامتحان تلقائياً الآن...`);
+      setCheatWarning(true);
+      setTabSwitchCount((prev) => prev + 1);
+      setShowSubmitConfirm(false);
+
+      try {
+        const res = await fetch("/api/exams/submit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          keepalive: true,
           body: JSON.stringify({
             attemptId,
             answers: answersRef.current,
-            tabSwitched: true,
+            violationReason: reason,
           }),
-        }).catch(() => {});
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setAutoSubmittedReason(reason);
+          setIsScreenProtected(false);
+          setIsFinished(true);
+          setResultData(data.review || data);
+        }
+      } catch {
+        // إبقاء ستار الحماية مفعلاً في حال تعذر الشبكة
       }
     };
 
@@ -175,19 +191,40 @@ export default function StudentExamPage({
             .catch(() => {});
         }
       } catch {
-        // تجاهل في حال عدم توفر إذن الحافظة
+        // تجاهل
       }
     };
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        triggerProtectionShield("تم إخفاء الأسئلة عند مغادرة تبويب الامتحان أو فتح أداة خارجية");
+        forceSubmitOnViolation("تم الخروج من تبويب الامتحان أو فتح أداة خارجية");
       }
     };
 
     const handleWindowBlur = () => {
-      // التعتيم الفوري بمجرد فقدان التركيز (مثل فتح أداة القص Win+Shift+S أو التبديل لتطبيق آخر)
-      triggerProtectionShield("تم تعتيم الشاشة لحماية الامتحان عند فقدان التركيز أو فتح أداة تصوير");
+      // مهلة أولية قصيرة عند فتح الصفحة فقط، بعدها أي خروج أو فتح أداة تصوير يسلم الامتحان فوراً
+      if (Date.now() - mountedAt < 800) return;
+      forceSubmitOnViolation("تم الخروج من نافذة الامتحان أو فتح أداة تصوير خارجية");
+    };
+
+    const handlePageHide = () => {
+      if (forcedSubmitRef.current) return;
+      forcedSubmitRef.current = true;
+      try {
+        const payload = new Blob(
+          [
+            JSON.stringify({
+              attemptId,
+              answers: answersRef.current,
+              violationReason: "مغادرة أو إغلاق صفحة الامتحان",
+            }),
+          ],
+          { type: "application/json" }
+        );
+        navigator.sendBeacon("/api/exams/submit", payload);
+      } catch {
+        // تجاهل
+      }
     };
 
     const handleKeyDownOrUp = (e: KeyboardEvent) => {
@@ -200,19 +237,21 @@ export default function StudentExamPage({
         e.preventDefault();
         e.stopPropagation();
         clearClipboardSafely();
-        triggerProtectionShield("محاولة أخذ لقطة شاشة (PrintScreen) محظورة أثناء الامتحان");
+        forceSubmitOnViolation("محاولة أخذ لقطة شاشة (PrintScreen) أثناء الامتحان");
         return;
       }
 
-      // 2. اختصار أداة القص في ويندوز Win+Shift+S أو macOS Cmd+Shift+3/4/5
+      // 2. اختصار أداة القص والتسجيل (Win+Shift+S, Win+Alt+R, Win+G, Cmd+Shift+3/4/5, Ctrl+Shift+S)
       if (
+        (e.metaKey && e.altKey && key === "r") ||
+        (e.metaKey && key === "g") ||
         (e.metaKey && e.shiftKey && (key === "s" || key === "3" || key === "4" || key === "5")) ||
         (e.ctrlKey && e.shiftKey && key === "s")
       ) {
         e.preventDefault();
         e.stopPropagation();
         clearClipboardSafely();
-        triggerProtectionShield("تم رصد اختصار لقطة الشاشة وتعتيم الأسئلة فوراً");
+        forceSubmitOnViolation("محاولة تصوير أو تسجيل شاشة الامتحان");
         return;
       }
 
@@ -220,8 +259,8 @@ export default function StudentExamPage({
       if (isCtrlOrMeta && ["p", "s", "u", "c", "x", "a"].includes(key)) {
         e.preventDefault();
         e.stopPropagation();
-        if (key === "p") {
-          triggerProtectionShield("الطباعة أو الحفظ بصيغة PDF محظور أثناء الامتحان");
+        if (key === "p" || key === "s") {
+          forceSubmitOnViolation("محاولة طباعة أو حفظ ورقة الامتحان");
         }
         return;
       }
@@ -233,13 +272,13 @@ export default function StudentExamPage({
       ) {
         e.preventDefault();
         e.stopPropagation();
-        triggerProtectionShield("فتح أدوات الفحص محظور أثناء الامتحان");
+        forceSubmitOnViolation("محاولة فتح أدوات الفحص أثناء الامتحان");
       }
     };
 
     const handleBeforePrint = (e: Event) => {
       e.preventDefault?.();
-      triggerProtectionShield("محاولة طباعة أو حفظ الامتحان محظورة");
+      forceSubmitOnViolation("محاولة طباعة ورقة الامتحان");
     };
 
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
@@ -253,6 +292,7 @@ export default function StudentExamPage({
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("pagehide", handlePageHide);
     window.addEventListener("keydown", handleKeyDownOrUp, true);
     window.addEventListener("keyup", handleKeyDownOrUp, true);
     window.addEventListener("beforeprint", handleBeforePrint);
@@ -265,6 +305,7 @@ export default function StudentExamPage({
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("pagehide", handlePageHide);
       window.removeEventListener("keydown", handleKeyDownOrUp, true);
       window.removeEventListener("keyup", handleKeyDownOrUp, true);
       window.removeEventListener("beforeprint", handleBeforePrint);
@@ -428,6 +469,17 @@ export default function StudentExamPage({
               </button>
             </div>
           </div>
+
+          {/* تنبيه أمني في حال تم التسليم التلقائي بسبب التصوير أو الخروج من الامتحان */}
+          {autoSubmittedReason && (
+            <div className="p-4 rounded-2xl bg-red-950/60 border border-red-500/40 text-red-200 text-xs flex items-center gap-3">
+              <ShieldAlert className="w-5 h-5 text-red-400 flex-shrink-0" />
+              <div>
+                <div className="font-bold text-red-300 mb-0.5">تم تسليم الامتحان تلقائياً وإغلاق المحاولة</div>
+                <div>السبب المسجل: {autoSubmittedReason}</div>
+              </div>
+            </div>
+          )}
 
           {/* كارت النتيجة الرئيسي والتحليلات */}
           <div className="relative rounded-3xl bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border border-slate-800 p-6 sm:p-8 shadow-2xl overflow-hidden eng-cyber-card">
@@ -740,31 +792,17 @@ export default function StudentExamPage({
         }
       `}</style>
 
-      {/* ستار الحماية الفوري عند محاولة التصوير أو فقدان التركيز */}
+      {/* ستار الحماية الفوري عند محاولة التصوير أو الخروج (يتم التسليم التلقائي) */}
       {isScreenProtected && (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4">
           <div className="max-w-md w-full bg-slate-900 border border-red-500/40 rounded-3xl p-6 sm:p-8 text-center shadow-2xl space-y-4">
             <div className="w-16 h-16 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto">
-              <EyeOff className="w-8 h-8" />
+              <ShieldAlert className="w-8 h-8 animate-pulse" />
             </div>
-            <h2 className="text-lg font-bold text-white">تم إخفاء ورقة الامتحان أمنياً</h2>
+            <h2 className="text-lg font-bold text-white">جاري تسليم الامتحان تلقائياً</h2>
             <p className="text-xs text-red-300 leading-relaxed bg-red-950/40 border border-red-500/20 rounded-2xl p-3">
-              {protectionReason || "يُمنع أخذ لقطة شاشة (Screenshot) أو مغادرة نافذة الامتحان."}
+              {protectionReason || "تم رصد محاولة تصوير أو مغادرة الامتحان — يتم الآن تسليم إجاباتك وإغلاق المحاولة."}
             </p>
-            <div className="text-[11px] text-slate-400">
-              محاولات الخروج/التصوير المسجلة: <span className="font-mono font-bold text-amber-400">{tabSwitchCount}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                playCyberClick();
-                setIsScreenProtected(false);
-              }}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-600/25"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>العودة للامتحان واستئناف الحل</span>
-            </button>
           </div>
         </div>
       )}

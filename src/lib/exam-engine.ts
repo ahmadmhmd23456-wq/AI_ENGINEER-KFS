@@ -212,7 +212,8 @@ export async function finalizeAndGradeAttempt(
   attemptId: string,
   userId: string,
   isTimedOut: boolean = false,
-  finalAnswers?: Record<string, string>
+  finalAnswers?: Record<string, string>,
+  incrementTabSwitch: boolean = false
 ) {
   const attempt = await prisma.examAttempt.findFirst({
     where: { id: attemptId, userId },
@@ -268,6 +269,7 @@ export async function finalizeAndGradeAttempt(
       isPassed,
       status: isTimedOut ? "TIMED_OUT" : "SUBMITTED",
       submittedAt: new Date(),
+      tabSwitchCount: incrementTabSwitch ? { increment: 1 } : undefined,
     },
   });
 
