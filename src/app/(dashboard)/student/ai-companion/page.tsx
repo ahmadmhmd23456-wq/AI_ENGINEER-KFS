@@ -36,6 +36,7 @@ interface ChatMessage {
   content: string;
   sticker?: string | null;
   imageDataUrl?: string | null;
+  imageUrl?: string | null;
   aiReaction?: string | null;
   userReaction?: string | null;
   createdAt: string;
@@ -567,17 +568,17 @@ export default function StudentAiCompanionPage() {
                         </div>
                       )}
 
-                      {msg.imageDataUrl && (
+                      {(msg.imageDataUrl || msg.imageUrl) && (
                         <button
                           type="button"
-                          onClick={() => setPreviewModalImage(msg.imageDataUrl!)}
+                          onClick={() => setPreviewModalImage((msg.imageDataUrl || msg.imageUrl)!)}
                           className="mb-2 block rounded-xl overflow-hidden border border-white/15 hover:opacity-95 transition-opacity"
                           title="تكبير الصورة"
                         >
                           <img
-                            src={msg.imageDataUrl}
-                            alt="صورة سؤال مرفوعة"
-                            className="max-h-56 w-auto object-contain rounded-xl bg-black/20"
+                            src={(msg.imageDataUrl || msg.imageUrl)!}
+                            alt="صورة مرفقة"
+                            className="max-h-60 w-auto object-contain rounded-xl bg-black/20"
                           />
                         </button>
                       )}

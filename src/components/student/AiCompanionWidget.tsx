@@ -16,6 +16,7 @@ export default function AiCompanionWidget() {
   const [quickMsg, setQuickMsg] = useState("");
   const [quickReply, setQuickReply] = useState<string | null>(null);
   const [quickSticker, setQuickSticker] = useState<string | null>(null);
+  const [quickImageUrl, setQuickImageUrl] = useState<string | null>(null);
   const [quickAiReaction, setQuickAiReaction] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
@@ -53,6 +54,7 @@ export default function AiCompanionWidget() {
       if (res.ok && data.assistantMessage?.content) {
         setQuickReply(data.assistantMessage.content);
         setQuickSticker(data.assistantMessage.sticker || null);
+        setQuickImageUrl(data.assistantMessage.imageUrl || null);
         setQuickAiReaction(data.userMessage?.aiReaction || null);
         setQuickMsg("");
       }
@@ -128,8 +130,15 @@ export default function AiCompanionWidget() {
                     </div>
                   ) : null;
                 })()}
-                <div className="p-3 rounded-2xl bg-slate-800/80 border border-slate-700 text-slate-100 whitespace-pre-wrap leading-relaxed">
-                  {quickReply}
+                <div className="p-3 rounded-2xl bg-slate-800/80 border border-slate-700 text-slate-100 whitespace-pre-wrap leading-relaxed space-y-2">
+                  {quickImageUrl && (
+                    <img
+                      src={quickImageUrl}
+                      alt="الجدول الدراسي"
+                      className="rounded-xl w-full max-h-44 object-contain bg-white"
+                    />
+                  )}
+                  <div>{quickReply}</div>
                 </div>
               </div>
             ) : (

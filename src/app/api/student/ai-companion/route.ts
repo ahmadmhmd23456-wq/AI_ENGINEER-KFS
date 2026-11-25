@@ -130,6 +130,7 @@ export async function GET() {
           content: decoded.text,
           sticker: decoded.sticker || null,
           imageDataUrl: decoded.imageDataUrl || null,
+          imageUrl: decoded.imageUrl || null,
           aiReaction: decoded.aiReaction || null,
           userReaction: decoded.userReaction || null,
           createdAt: m.createdAt,
@@ -279,6 +280,7 @@ export async function POST(req: NextRequest) {
           encryptedContent: encodeChatPayload(userId, {
             text: result.reply,
             sticker: result.sticker || null,
+            imageUrl: result.imageUrl || null,
           }),
         },
       });
@@ -302,6 +304,7 @@ export async function POST(req: NextRequest) {
           channel: "WEB",
           content: result.reply,
           sticker: result.sticker || null,
+          imageUrl: result.imageUrl || null,
           aiReaction: null,
           userReaction: null,
           createdAt: assistantMsgRecord.createdAt,

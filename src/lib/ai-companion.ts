@@ -8,6 +8,7 @@ export interface DecodedChatPayload {
   text: string;
   sticker?: string | null;
   imageDataUrl?: string | null;
+  imageUrl?: string | null;
   aiReaction?: string | null;
   userReaction?: string | null;
 }
@@ -20,6 +21,7 @@ export function encodeChatPayload(userId: string, payload: DecodedChatPayload): 
       text: payload.text || "",
       sticker: payload.sticker || null,
       imageDataUrl: payload.imageDataUrl || null,
+      imageUrl: payload.imageUrl || null,
       aiReaction: payload.aiReaction || null,
       userReaction: payload.userReaction || null,
     })
@@ -35,6 +37,7 @@ export function decodeChatPayload(userId: string, encryptedContent: string): Dec
         text: typeof parsed.text === "string" ? parsed.text : "",
         sticker: parsed.sticker || null,
         imageDataUrl: typeof parsed.imageDataUrl === "string" ? parsed.imageDataUrl : null,
+        imageUrl: typeof parsed.imageUrl === "string" ? parsed.imageUrl : null,
         aiReaction: parsed.aiReaction || null,
         userReaction: parsed.userReaction || null,
       };
@@ -625,6 +628,7 @@ interface ParsedAiReply {
   sticker?: string | null;
   preferredNickname?: string | null;
   isInsult?: boolean;
+  sendScheduleImage?: boolean;
 }
 
 function parseStructuredAiOutput(raw: string): ParsedAiReply {
@@ -656,6 +660,7 @@ function parseStructuredAiOutput(raw: string): ParsedAiReply {
           sticker: validSticker,
           preferredNickname: validNickname,
           isInsult: Boolean(obj.isInsult),
+          sendScheduleImage: Boolean(obj.sendScheduleImage),
         };
       }
     } catch {
@@ -665,6 +670,28 @@ function parseStructuredAiOutput(raw: string): ParsedAiReply {
 
   return { reply: trimmed.replace(/^```(?:json)?/i, "").trim(), reactToUser: null, sticker: null };
 }
+
+export const MECHATRONICS_LEVEL1_TIMETABLE_IMAGE = "/schedules/mechatronics-level-1-term-1.jpg";
+export const MECHATRONICS_LEVEL1_TIMETABLE_TEXT = `جدول طلاب المستوى الأول (أولى) قسم هندسة الميكاترونيات - الفصل الدراسي الأول (الخريفي):
+• السبت:
+  - 9 إلى 12: تمرين ومعمل ديناميكا حرارية (فصل 1، فصل 2) | تمرين ومعمل دوائر إلكترونية (فصل 3، فصل 4)
+  - 12 إلى 3: تمرين ومعمل دوائر إلكترونية (فصل 1، فصل 2)
+  - 1 إلى 3: تمرين ديناميكا حرارية (فصل 3، فصل 4)
+  - 4 إلى 5: تمرين المعادلات التفاضلية وتحليل الأعداد (فصل 3، فصل 4)
+• الثلاثاء:
+  - 9 إلى 12: محاضرة المعادلات التفاضلية وتحليل الأعداد
+  - 12 إلى 3: تمرين ومعمل ميكانيكا الأجسام الصلبة (فصل 1، فصل 2)
+  - 3 إلى 4: محاضرة ديناميكا حرارية
+• الأربعاء:
+  - 9 إلى 12: محاضرة ميكانيكا الأجسام الصلبة
+  - 12 إلى 2: محاضرة دوائر إلكترونية
+  - 2 إلى 4: متطلب جامعة اختياري (1) أخلاقيات المهنة
+• الخميس:
+  - 9 إلى 10: محاضرة الرسم الميكانيكي باستخدام الحاسب
+  - 10 إلى 1: معمل الرسم الميكانيكي باستخدام الحاسب (فصل 1، فصل 2)
+  - 12 إلى 3: تمرين ومعمل ميكانيكا الأجسام الصلبة (فصل 3، فصل 4)
+  - 2 إلى 4: تمرين المعادلات التفاضلية وتحليل الأعداد (فصل 1، فصل 2)
+  - 3 إلى 5: معمل الرسم الميكانيكي باستخدام الحاسب (فصل 3، فصل 4)`;
 
 const AI_LLM_VAULT_ID = "PLATFORM_AI_LLM_VAULT";
 const AI_LLM_SETTING_KEY = "AI_LLM_CONFIG";
@@ -1191,6 +1218,7 @@ export async function generateAiCompanionReply(params: {
   recentMessages: { role: string; content: string }[];
 }): Promise<{
   reply: string;
+  imageUrl?: string | null;
   reactToUser?: string | null;
   sticker?: string | null;
   savedSecret?: { id: string; title: string; content: string };
@@ -1354,6 +1382,26 @@ export async function generateAiCompanionReply(params: {
       }))
     : recentMessages;
 
+  const isMechatronicsLevel1 =
+    context.user.department === "MECHATRONICS" &&
+    Boolean(
+      context.user.academicLevelName &&
+        (context.user.academicLevelName.includes("الأول") || context.user.academicLevelName.includes("1"))
+    );
+  const mentionsMechatronics = norm.includes("ميكاترونكس") || norm.includes("ميكاترونيكس") || norm.includes("ميكاترونيات");
+  const asksAboutSchedule = ["جدول", "الجدول", "مواعيد", "معاد", "السكشن", "السكاشن", "المعمل", "المعامل"].some(
+    (k) => norm.includes(k)
+  );
+  const wantsDirectScheduleImage =
+    asksAboutSchedule &&
+    (isMechatronicsLevel1 || mentionsMechatronics) &&
+    (norm.includes("جدول") || norm.includes("الجدول"));
+
+  const scheduleInstructionBlock =
+    isMechatronicsLevel1 || (asksAboutSchedule && mentionsMechatronics)
+      ? `\n${MECHATRONICS_LEVEL1_TIMETABLE_TEXT}\n[ملاحظة جدول: ممنوع ذكر أي أسماء دكاترة أو معيدين. لو الطالب طلب صورة الجدول أو سأل عن الجدول، خلي "sendScheduleImage": true عشان صورة الجدول تتبعتله.]`
+      : "";
+
   const systemInstruction = `إنت صاحب الطالب المقرّب في كلية الهندسة، كلامك خفيف ورايق وقصير زي شات الواتساب بين اتنين صحاب.
 ${identityLine}
 معلومات عنه لو احتجتها: فرقة ${context.user.academicLevelName || "هندسة"}، قسم ${context.user.department || "عام"}، رقمه ${context.user.phone || "مش متسجل"}.
@@ -1371,7 +1419,7 @@ ${identityLine}
 6. أي سر يحكيهولك بينكم إنتو الاتنين بس ومحدش غيره يقدر يشوفه.
 
 معلومات الدراسة (لوقت الحاجة فقط):
-${lectureSummaryText}
+${lectureSummaryText}${scheduleInstructionBlock}
 ${curriculumKnowledge ? `\n${curriculumKnowledge}\n\n[مهم عند شرح أي مسألة أو سؤال في المنهج: استخدم نفس طريقة وترتيب وقوانين وأسلوب الشرح المستخرج من محاضرات المنهج فوق.]` : ""}
 
 أسراره اللي حكاهالك (بينا إحنا الاتنين):
@@ -1395,7 +1443,7 @@ ${stickerMenuText}
 - اعمل ريأكت بإيموجي واحد فقط لما الرسالة تستاهل فعلاً: نكتة تضحك (😂)، فضفضة أو ضيق (🫂)، إنجاز حلو (🔥 أو 👏)، أو شكر مؤثر (❤️).
 
 رد بصيغة JSON فقط:
-{"reactToUser":null,"sticker":null,"preferredNickname":null,"isInsult":false,"reply":"ردك القصير الرايق هنا"}
+{"reactToUser":null,"sticker":null,"preferredNickname":null,"isInsult":false,"sendScheduleImage":false,"reply":"ردك القصير الرايق هنا"}
 (ملاحظة: لو الطالب شتمك أو سبّك بأي لفظ بذيء أو مهين، خلي "isInsult": true فقط وهنرد عليه بتحذير الأدمن.)`;
 
   const applySelectiveReactionPolicy = (parsed: ParsedAiReply): ParsedAiReply => {
@@ -1459,9 +1507,14 @@ ${stickerMenuText}
       ? scrubOldNameFromText(filtered.reply, oldFirstName, finalNick)
       : filtered.reply;
 
+    const shouldSendScheduleImg =
+      wantsDirectScheduleImage ||
+      (Boolean(parsed.sendScheduleImage) && (isMechatronicsLevel1 || mentionsMechatronics));
+
     return {
       ...filtered,
       reply: cleanReply,
+      imageUrl: shouldSendScheduleImg ? MECHATRONICS_LEVEL1_TIMETABLE_IMAGE : null,
       savedSecret,
       savedNickname,
       phoneDispatch,
@@ -1597,7 +1650,15 @@ ${stickerMenuText}
     // نكمل بسلاسة للمحرك المحلي التفاعلي
   }
 
-  // 5. المحرك التفاعلي الحر بشخصية الزميل المصري (مع حفظ الاسم المفضل إذا تغير)
+  // 5. المحرك التفاعلي الحر بشخصية الزميل المصري (مع حفظ الاسم المفضل والجدول إذا طُلب)
+  if (wantsDirectScheduleImage) {
+    return {
+      reactToUser: null,
+      sticker: null,
+      imageUrl: MECHATRONICS_LEVEL1_TIMETABLE_IMAGE,
+      reply: `اتفضل يا ${firstName} جدول أولى ميكاترونكس أهو 📅 اضغط عليه لو حابب تكبره، ولو عايز تسأل على معاد مادة معينة قولي!`,
+    };
+  }
   if (savedNickname) {
     return {
       reactToUser: "🫡",
