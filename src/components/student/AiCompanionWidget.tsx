@@ -59,7 +59,7 @@ export default function AiCompanionWidget() {
   };
 
   return (
-    <div className="fixed bottom-20 sm:bottom-6 left-4 sm:left-6 z-40" dir="rtl">
+    <div className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-40" dir="rtl">
       {isOpen && (
         <div className="mb-3 w-80 sm:w-96 bg-slate-900 border border-cyan-500/35 rounded-3xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
           <div className="bg-gradient-to-r from-cyan-950/90 to-slate-900 px-4 py-3 border-b border-slate-800 flex items-center justify-between">
