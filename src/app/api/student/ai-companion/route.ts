@@ -47,7 +47,8 @@ export async function GET() {
       context.unwatchedLectures.length + context.unfinishedLectures.length;
 
     if (rawMessages.length === 0) {
-      const firstName = extractFirstName(context.user.name);
+      const firstName =
+        context.user.preferredNickname || extractFirstName(context.user.name);
       let welcome = `أهلاً يا ${firstName} 👋 إيه الدنيا؟`;
 
       if (pendingTotal > 0) {
@@ -74,7 +75,8 @@ export async function GET() {
       });
       rawMessages = [createdWelcome];
     } else if (pendingTotal > 0 && hoursSinceLastMsg >= 12) {
-      const firstName = extractFirstName(context.user.name);
+      const firstName =
+        context.user.preferredNickname || extractFirstName(context.user.name);
       const reminderLines = [`👋 إيه يا ${firstName} غبت فين! بقولك، في محاضرات مستنياك على المنصة:`];
       if (context.unwatchedLectures[0]) {
         reminderLines.push(
@@ -273,6 +275,7 @@ export async function POST(req: NextRequest) {
           createdAt: assistantMsgRecord.createdAt,
         },
         savedSecret: result.savedSecret || null,
+        savedNickname: result.savedNickname || null,
         phoneDispatch: result.phoneDispatch || null,
       });
     }

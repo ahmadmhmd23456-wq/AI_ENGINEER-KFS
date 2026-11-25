@@ -67,6 +67,7 @@ export interface StudentLearningContext {
   user: {
     id: string;
     name: string;
+    preferredNickname: string | null;
     phone: string | null;
     role: string;
     department: string | null;
@@ -78,6 +79,39 @@ export interface StudentLearningContext {
   unwatchedLectures: LectureReminderItem[];
   unfinishedLectures: LectureReminderItem[];
   pendingExams: ExamReminderItem[];
+}
+
+export async function getPreferredNickname(userId: string): Promise<string | null> {
+  try {
+    const row = await prisma.aiPrivateSecret.findFirst({
+      where: { userId, category: "NICKNAME" },
+      orderBy: { updatedAt: "desc" },
+    });
+    if (!row) return null;
+    const dec = decryptForUser(userId, row.encryptedContent).trim();
+    return dec && !dec.startsWith("[") ? dec : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function savePreferredNickname(
+  userId: string,
+  nickname: string
+): Promise<{ id: string; nickname: string }> {
+  const clean = nickname.trim().slice(0, 32);
+  await prisma.aiPrivateSecret.deleteMany({
+    where: { userId, category: "NICKNAME" },
+  });
+  const created = await prisma.aiPrivateSecret.create({
+    data: {
+      userId,
+      encryptedTitle: encryptForUser(userId, "الاسم المفضل"),
+      encryptedContent: encryptForUser(userId, clean),
+      category: "NICKNAME",
+    },
+  });
+  return { id: created.id, nickname: clean };
 }
 
 export async function getStudentLearningContext(userId: string): Promise<StudentLearningContext | null> {
@@ -99,7 +133,10 @@ export async function getStudentLearningContext(userId: string): Promise<Student
 
   if (!user) return null;
 
-  const purchasedIds = user.purchases.map((p) => p.subjectId);
+  const [purchasedIds, preferredNickname] = [
+    user.purchases.map((p) => p.subjectId),
+    await getPreferredNickname(userId),
+  ];
   const progressMap = new Map(user.videoProgress.map((vp) => [vp.videoId, vp]));
   const completedExamIds = new Set(user.examAttempts.map((a) => a.examId));
   const now = new Date();
@@ -185,6 +222,7 @@ export async function getStudentLearningContext(userId: string): Promise<Student
     user: {
       id: user.id,
       name: user.name,
+      preferredNickname,
       phone: user.phone,
       role: user.role,
       department: user.department,
@@ -200,9 +238,9 @@ export async function getStudentLearningContext(userId: string): Promise<Student
 }
 
 export function buildPhoneReminderMessage(context: StudentLearningContext): string {
-  const firstName = context.user.name?.split(" ")[0] || "يا هندسة";
+  const firstName = context.user.preferredNickname || extractFirstName(context.user.name);
   const lines: string[] = [
-    `أهلاً يا ${firstName} 👋🤖 أنا رفيقك الذكي على منصة هندسة!`,
+    `أهلاً يا ${firstName} 👋🤖`,
   ];
 
   if (context.unwatchedLectures.length > 0) {
@@ -343,7 +381,8 @@ export async function notifyStudentsOfNewLecture(params: {
       const student = purchase.user;
       if (!student || student.status !== "ACTIVE") continue;
 
-      const firstName = student.name?.split(" ")[0] || "يا هندسة";
+      const nickname = await getPreferredNickname(student.id);
+      const firstName = nickname || extractFirstName(student.name);
       const durationNote = params.durationSeconds
         ? ` (${formatDurationArabic(params.durationSeconds)})`
         : "";
@@ -406,6 +445,50 @@ export function extractFirstName(fullName?: string | null): string {
   return cleaned.split(/\s+/)[0] || "يا هندسة";
 }
 
+function cleanNicknameCandidate(raw: string): string | null {
+  let s = raw
+    .trim()
+    .replace(/^["'«»(]+|["'«»).،,!؟?]+$/g, "")
+    .replace(/^(?:بـ|ب|يا)\s*/i, "")
+    .replace(
+      /\s+(?:بعد\s*كده|من\s*النهارد[هة]|من\s*دلوقتي|لو\s*سمحت|عشان\s*بحبه|بس|نهائي|علطول|على\s*طول).*$/i,
+      ""
+    )
+    .trim();
+  if (!s || s.length < 2 || s.length > 28) return null;
+  if (/^(?:اسم|الاسم|اسمي|تانى|تاني|جديد|كذا|حد)$/i.test(s)) return null;
+  return s;
+}
+
+export function detectPreferredNickname(message: string): string | null {
+  const text = (message || "").trim();
+  if (!text) return null;
+
+  const patterns = [
+    /(?:عايزك\s+|عاوزك\s+|ممكن\s+|يا\s*ريت\s+)?(?:تندهلي|تنديلي|تندهني|تناديني|اند[هة]لي|ند[هة]لي|ناديني|ندهني|سميني|قولي|قوللي)\s+(?:بـ?\s*|يا\s+)?([^\n,.،!؟?]{2,32})/i,
+    /(?:غير\s*اسمي\s*(?:لـ|ل|إلى|الى)|خلي\s*اسمي|اسمي\s*الجديد(?:\s*هو)?|بق[ىي]\s*اسمي)\s*[:\-]?\s*([^\n,.،!؟?]{2,32})/i,
+    /(?:call\s+me|my\s+nickname\s+is)\s+([^\n,.!?]{2,28})/i,
+  ];
+
+  for (const re of patterns) {
+    const match = text.match(re);
+    if (match?.[1]) {
+      const candidate = cleanNicknameCandidate(match[1]);
+      if (candidate) return candidate;
+    }
+  }
+  return null;
+}
+
+function scrubOldNameFromText(text: string, oldName: string, newNickname: string): string {
+  if (!text || !oldName || !newNickname) return text;
+  if (oldName === newNickname) return text;
+  // تجنب التعديل لو الاسم الجديد يحتوي على القديم
+  if (newNickname.includes(oldName)) return text;
+  const escaped = oldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.replace(new RegExp(`(^|[\\s،,.!؟\\(\\[])${escaped}(?=$|[\\s،,.!؟\\)\\]])`, "g"), `$1${newNickname}`);
+}
+
 function isCleanLlmReply(text: string): boolean {
   if (!text || text.trim().length < 2) return false;
   // منع أي حروف صينية/يابانية/كورية مشوهة قد تصدر أحياناً من بعض النماذج المفتوحة
@@ -417,6 +500,7 @@ interface ParsedAiReply {
   reply: string;
   reactToUser?: string | null;
   sticker?: string | null;
+  preferredNickname?: string | null;
 }
 
 function parseStructuredAiOutput(raw: string): ParsedAiReply {
@@ -438,10 +522,15 @@ function parseStructuredAiOutput(raw: string): ParsedAiReply {
           typeof obj.reactToUser === "string" && obj.reactToUser.trim().length <= 8
             ? obj.reactToUser.trim()
             : null;
+        const validNickname =
+          typeof obj.preferredNickname === "string"
+            ? cleanNicknameCandidate(obj.preferredNickname)
+            : null;
         return {
           reply: obj.reply.trim(),
           reactToUser: validReact,
           sticker: validSticker,
+          preferredNickname: validNickname,
         };
       }
     } catch {
@@ -732,6 +821,7 @@ export async function generateAiCompanionReply(params: {
   reactToUser?: string | null;
   sticker?: string | null;
   savedSecret?: { id: string; title: string; content: string };
+  savedNickname?: { id: string; title: string; content: string };
   phoneDispatch?: { sent: boolean; phone: string | null; waDirectUrl: string | null };
 }> {
   const { userId, userMessage, userSticker, context, decryptedSecrets, recentMessages } = params;
@@ -745,7 +835,23 @@ export async function generateAiCompanionReply(params: {
     : "";
 
   const norm = normalizeArabic(effectiveUserInput);
-  const firstName = extractFirstName(context.user.name);
+  const oldFirstName = extractFirstName(context.user.name);
+
+  // 0. فحص طلب تغيير الاسم المفضل الدائم (ومنع استخدام الاسم القديم نهائياً)
+  let savedNickname: { id: string; title: string; content: string } | undefined;
+  const detectedNick = detectPreferredNickname(userMessage);
+  if (detectedNick) {
+    const saved = await savePreferredNickname(userId, detectedNick);
+    savedNickname = { id: saved.id, title: "الاسم المفضل", content: saved.nickname };
+  }
+
+  let activeNickname =
+    savedNickname?.content ||
+    context.user.preferredNickname ||
+    decryptedSecrets.find((s) => s.category === "NICKNAME")?.content ||
+    null;
+
+  const firstName = activeNickname || oldFirstName;
 
   // 1. فحص رغبة الطالب في حفظ سر شخصي داخل الخزنة المشفرة
   const secretTriggers = [
@@ -835,14 +941,29 @@ export async function generateAiCompanionReply(params: {
   ].join("\n");
 
   const secretsSummaryText =
-    decryptedSecrets.length > 0
-      ? decryptedSecrets.slice(0, 10).map((s, i) => `${i + 1}. ${s.content}`).join("\n")
+    decryptedSecrets.filter((s) => s.category !== "NICKNAME").length > 0
+      ? decryptedSecrets
+          .filter((s) => s.category !== "NICKNAME")
+          .slice(0, 10)
+          .map((s, i) => `${i + 1}. ${s.content}`)
+          .join("\n")
       : "لا توجد أسرار محفوظة بعد.";
 
   const stickerMenuText = AI_STICKERS.map((s) => `${s.id} (${s.emoji} ${s.label})`).join("، ");
 
+  const identityLine = activeNickname
+    ? `الاسم المفضل الوحيد لصاحبك: "${activeNickname}" — اندهله بيه فقط، وممنوع نهائياً تناديه بأي اسم قديم أو أي اسم تاني غير "${activeNickname}".`
+    : `اسمه: ${firstName} (تقدر تقول "يا ${firstName}" أحياناً بالراحة).`;
+
+  const sanitizedRecentMessages = activeNickname
+    ? recentMessages.map((m) => ({
+        role: m.role,
+        content: scrubOldNameFromText(m.content, oldFirstName, activeNickname!),
+      }))
+    : recentMessages;
+
   const systemInstruction = `إنت صاحب الطالب المقرّب في كلية الهندسة، كلامك خفيف ورايق وقصير زي شات الواتساب بين اتنين صحاب.
-اسمه: ${context.user.name} (تقدر تقول "يا ${firstName}" أحياناً بالراحة).
+${identityLine}
 معلومات عنه لو احتجتها: فرقة ${context.user.academicLevelName || "هندسة"}، قسم ${context.user.department || "عام"}، رقمه ${context.user.phone || "مش متسجل"}.
 
 قواعد الأسلوب المهمة جداً:
@@ -852,15 +973,17 @@ export async function generateAiCompanionReply(params: {
 2. الردود القصيرة هي الأساس:
    - في الدردشة العادية والفضفضة والهزار: رد في **جملة واحدة أو جملتين قصار بالكتير** (كلام واتساب سريع من غير رغي أو مقالات أو مقدمات).
    - متطوّلش غير لما يطلب شرح مسألة أو كود أو حاجة في المنهج محتاجة توضيح، وبرضو اشرحها ببساطة من غير تكلف.
-3. متقولش أبداً إنك ذكاء اصطناعي أو بوت أو ChatGPT، ومتختمش كلامك بجمل المساعدين ("تحب أساعدك في حاجة تانية؟")، ومترصش نقط وأرقام في الكلام العادي.
-4. متجيبش سيرة المحاضرات أو الكورسات إلا لو هو سأل عنها.
-5. أي سر يحكيهولك بينكم إنتو الاتنين بس ومحدش غيره يقدر يشوفه.
+3. لو طلب تناديه باسم جديد، احفظه في بالك فوراً واكتب الاسم الجديد في حقل "preferredNickname" في الـ JSON، ومن اللحظة دي متندهلوش أبداً بالاسم القديم.
+4. متقولش أبداً إنك ذكاء اصطناعي أو بوت أو ChatGPT، ومتختمش كلامك بجمل المساعدين ("تحب أساعدك في حاجة تانية؟")، ومترصش نقط وأرقام في الكلام العادي.
+5. متجيبش سيرة المحاضرات أو الكورسات إلا لو هو سأل عنها.
+6. أي سر يحكيهولك بينكم إنتو الاتنين بس ومحدش غيره يقدر يشوفه.
 
 معلومات الدراسة (لوقت الحاجة فقط):
 ${lectureSummaryText}
 
 أسراره اللي حكاهالك (بينا إحنا الاتنين):
 ${secretsSummaryText}
+${savedNickname ? `\n[تم تسجيل اسمه المفضل الجديد "${savedNickname.content}" بنجاح — التزم بيه فقط.]` : ""}
 ${savedSecret ? `\n[تم حفظ كلامه الأخير "${savedSecret.title}" بأمان.]` : ""}
 ${
   phoneDispatch
@@ -878,7 +1001,7 @@ ${stickerMenuText}
 - اعمل ريأكت بإيموجي واحد فقط لما الرسالة تستاهل فعلاً: نكتة تضحك (😂)، فضفضة أو ضيق (🫂)، إنجاز حلو (🔥 أو 👏)، أو شكر مؤثر (❤️).
 
 رد بصيغة JSON فقط:
-{"reactToUser":null,"sticker":null,"reply":"ردك القصير الرايق هنا"}`;
+{"reactToUser":null,"sticker":null,"preferredNickname":null,"reply":"ردك القصير الرايق هنا"}`;
 
   const applySelectiveReactionPolicy = (parsed: ParsedAiReply): ParsedAiReply => {
     const hasEmotionOrTrigger =
@@ -914,10 +1037,32 @@ ${stickerMenuText}
     return parsed;
   };
 
+  const finalizeLlmResult = async (parsed: ParsedAiReply) => {
+    let finalNick = activeNickname;
+    if (!savedNickname && parsed.preferredNickname) {
+      const saved = await savePreferredNickname(userId, parsed.preferredNickname);
+      savedNickname = { id: saved.id, title: "الاسم المفضل", content: saved.nickname };
+      finalNick = saved.nickname;
+    }
+
+    const filtered = applySelectiveReactionPolicy(parsed);
+    const cleanReply = finalNick
+      ? scrubOldNameFromText(filtered.reply, oldFirstName, finalNick)
+      : filtered.reply;
+
+    return {
+      ...filtered,
+      reply: cleanReply,
+      savedSecret,
+      savedNickname,
+      phoneDispatch,
+    };
+  };
+
   // محاولة 1: Gemini API
   if (geminiKey) {
     const contents = [
-      ...recentMessages.slice(-10).map((m) => ({
+      ...sanitizedRecentMessages.slice(-10).map((m) => ({
         role: m.role === "ASSISTANT" ? "model" : "user",
         parts: [{ text: m.content }],
       })),
@@ -933,8 +1078,7 @@ ${stickerMenuText}
       temperature: 0.85,
     });
     if (g.ok && g.text) {
-      const parsed = applySelectiveReactionPolicy(parseStructuredAiOutput(g.text));
-      return { ...parsed, savedSecret, phoneDispatch };
+      return await finalizeLlmResult(parseStructuredAiOutput(g.text));
     }
   }
 
@@ -972,14 +1116,14 @@ ${stickerMenuText}
       apiKey: prov.apiKey,
       model: prov.model,
       systemInstruction,
-      recentMessages,
+      recentMessages: sanitizedRecentMessages,
       userInput: effectiveUserInput,
       jsonMode: prov.jsonMode,
     });
     if (r.ok && r.text) {
-      const parsed = applySelectiveReactionPolicy(parseStructuredAiOutput(r.text));
+      const parsed = parseStructuredAiOutput(r.text);
       if (isCleanLlmReply(parsed.reply)) {
-        return { ...parsed, savedSecret, phoneDispatch };
+        return await finalizeLlmResult(parsed);
       }
     }
   }
@@ -993,7 +1137,7 @@ ${stickerMenuText}
         model: "openai",
         messages: [
           { role: "system", content: systemInstruction },
-          ...recentMessages.slice(-6).map((m) => ({
+          ...sanitizedRecentMessages.slice(-6).map((m) => ({
             role: m.role === "ASSISTANT" ? "assistant" : "user",
             content: m.content,
           })),
@@ -1006,9 +1150,9 @@ ${stickerMenuText}
       const data = await res.json();
       const text = data?.choices?.[0]?.message?.content;
       if (text && typeof text === "string" && isCleanLlmReply(text)) {
-        const parsed = applySelectiveReactionPolicy(parseStructuredAiOutput(text));
+        const parsed = parseStructuredAiOutput(text);
         if (isCleanLlmReply(parsed.reply)) {
-          return { ...parsed, savedSecret, phoneDispatch };
+          return await finalizeLlmResult(parsed);
         }
       }
     }
@@ -1016,7 +1160,17 @@ ${stickerMenuText}
     // نكمل بسلاسة للمحرك المحلي التفاعلي
   }
 
-  // 5. المحرك التفاعلي الحر بشخصية الزميل المصري (مع ريأكت واستيكرز طبيعية)
+  // 5. المحرك التفاعلي الحر بشخصية الزميل المصري (مع حفظ الاسم المفضل إذا تغير)
+  if (savedNickname) {
+    return {
+      reactToUser: "🫡",
+      sticker: null,
+      reply: `من عيوني يا ${savedNickname.content}، خلاص اتسجلت عندي ومن دلوقتي مش هندهلك غير يا ${savedNickname.content}!`,
+      savedNickname,
+      savedSecret,
+      phoneDispatch,
+    };
+  }
   if (savedSecret) {
     return {
       reactToUser: "🤫",

@@ -144,6 +144,25 @@ export default function StudentAiCompanionPage() {
             ...prev,
           ]);
         }
+        if (data.savedNickname) {
+          playSuccessChime();
+          setSecrets((prev) => [
+            {
+              ...data.savedNickname,
+              category: "NICKNAME",
+              createdAt: new Date().toISOString(),
+            },
+            ...prev.filter((s) => s.category !== "NICKNAME"),
+          ]);
+          setContext((prev: any) =>
+            prev
+              ? {
+                  ...prev,
+                  user: { ...prev.user, preferredNickname: data.savedNickname.content },
+                }
+              : prev
+          );
+        }
         if (data.phoneDispatch?.waDirectUrl) {
           setLastWaUrl(data.phoneDispatch.waDirectUrl);
           fetchData();
@@ -773,7 +792,13 @@ export default function StudentAiCompanionPage() {
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 text-[10px]">
                         <span className="px-2 py-0.5 rounded-md bg-violet-500/15 text-violet-300 border border-violet-500/30 font-bold">
-                          {sec.category === "GOAL" ? "🎯 هدف" : sec.category === "NOTE" ? "📝 تذكرة" : "🔒 ملاحظة خاصة"}
+                          {sec.category === "NICKNAME"
+                            ? "🏷️ الاسم المفضل"
+                            : sec.category === "GOAL"
+                            ? "🎯 هدف"
+                            : sec.category === "NOTE"
+                            ? "📝 تذكرة"
+                            : "🔒 ملاحظة خاصة"}
                         </span>
                         <span className="text-slate-500 font-mono">
                           {new Date(sec.createdAt).toLocaleDateString("ar-EG")}
