@@ -111,7 +111,7 @@ export default function AiCompanionWidget() {
               </div>
             ) : (
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                احكيلي أي سر (مشفر ليك وحدك)، اسألني عن محاضراتك، أو قولي أبعتلك تذكير على رقمك الخاص.
+                اسألني عن محاضراتك، رتب مذاكرتك، أو اطلب أبعتلك تذكير على رقمك الخاص.
               </p>
             )}
           </div>
@@ -146,7 +146,7 @@ export default function AiCompanionWidget() {
               className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>فتح المحادثة الكاملة وخزنة أسراري</span>
+              <span>فتح المحادثة الكاملة والتذكيرات</span>
               <ArrowLeft className="w-3.5 h-3.5" />
             </Link>
           </form>
@@ -161,7 +161,7 @@ export default function AiCompanionWidget() {
           setIsOpen((prev) => !prev);
         }}
         className="relative group flex items-center gap-2 px-4 py-3 rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-xl shadow-cyan-600/30 border border-cyan-400/30 transition-all hover:scale-105 active:scale-95"
-        title="رفيقك الذكي وخزنة أسرارك"
+        title="رفيقك الذكي الشخصي"
       >
         <Bot className="w-5 h-5" />
         <span className="text-xs font-bold hidden sm:inline">رفيقي الذكي</span>

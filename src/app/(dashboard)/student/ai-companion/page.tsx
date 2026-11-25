@@ -256,7 +256,7 @@ export default function StudentAiCompanionPage() {
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="flex flex-col items-center gap-3">
           <RefreshCw className="w-8 h-8 text-cyan-400 animate-spin" />
-          <p className="text-xs text-slate-400">جاري فتح خزنتك المشفرة ورفيقك الذكي...</p>
+          <p className="text-xs text-slate-400">جاري تجهيز رفيقك الذكي...</p>
         </div>
       </div>
     );
@@ -287,7 +287,7 @@ export default function StudentAiCompanionPage() {
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-1 leading-relaxed max-w-2xl">
-                احكي معاه براحتك واحفظ أسرارك وأهدافك بتشفير خاص بحسابك فقط (لا يطلع عليها أي طالب ولا حتى إدارة المنصة)، وبيفكرك بالمحاضرات الجديدة واللي نسيت تكملها عبر رسائل على رقمك الخاص.
+                مساعدك الذكي للدردشة والمذاكرة — كل محادثاتك وملاحظاتك مشفرة بالكامل وخاصة بحسابك وحدك (لا يطلع عليها أي شخص آخر)، وبيفكرك بالمحاضرات الجديدة واللي نسيت تكملها برسائل على رقمك الخاص.
               </p>
             </div>
           </div>
@@ -336,7 +336,7 @@ export default function StudentAiCompanionPage() {
             }`}
           >
             <Lock className="w-4 h-4" />
-            <span>خزنة أسراري ({secrets.length})</span>
+            <span>ملاحظاتي الخاصة ({secrets.length})</span>
           </button>
 
           <button
@@ -458,22 +458,16 @@ export default function StudentAiCompanionPage() {
               {[
                 "عندي محاضرات إيه جديدة أو نسيتها؟",
                 "ابعتلي تذكير بالمحاضرات على رقمي",
-                "احفظ سر: ",
+                "رتبلي خطة مذاكرة النهاردة",
                 "مضغوط في المذاكرة ومحتاج تشجيع",
               ].map((prompt) => (
                 <button
                   key={prompt}
                   type="button"
-                  onClick={() => {
-                    if (prompt.endsWith(": ")) {
-                      setInputMsg(prompt);
-                    } else {
-                      handleSendMessage(prompt);
-                    }
-                  }}
+                  onClick={() => handleSendMessage(prompt)}
                   className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 hover:text-white whitespace-nowrap border border-slate-700 transition-all"
                 >
-                  {prompt.replace(/: $/, "...")}
+                  {prompt}
                 </button>
               ))}
             </div>
@@ -490,7 +484,7 @@ export default function StudentAiCompanionPage() {
                 type="text"
                 value={inputMsg}
                 onChange={(e) => setInputMsg(e.target.value)}
-                placeholder="احكيلي أي سر، اسألني عن محاضراتك، أو اطلب أبعتلك رسالة على رقمك..."
+                placeholder="اتكلم معايا براحتك، اسألني عن محاضراتك، أو اطلب أبعتلك تذكير على رقمك..."
                 className="flex-1 py-2.5 px-3.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
               />
               <button
@@ -550,10 +544,10 @@ export default function StudentAiCompanionPage() {
             <div className="bg-slate-900/80 border border-violet-500/20 rounded-3xl p-5 space-y-2">
               <div className="flex items-center gap-2 text-violet-300 text-xs font-bold">
                 <EyeOff className="w-4 h-4" />
-                <span>ضمان السرية التامة</span>
+                <span>خصوصية تامة</span>
               </div>
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                كلامك وأسرارك يتم تشفيرها بمفتاح خاص بحسابك (`AES-256-GCM`) قبل حفظها؛ لا يوجد أي صلاحية لأي شخص آخر أو للأدمن لقراءتها.
+                محادثاتك وملاحظاتك مشفرة تلقائياً بمفتاح خاص بحسابك (`AES-256-GCM`)؛ لا يوجد أي صلاحية لأي شخص آخر أو للأدمن لقراءتها.
               </p>
             </div>
           </div>
@@ -569,17 +563,17 @@ export default function StudentAiCompanionPage() {
                 <KeyRound className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-white">إضافة سر أو هدف جديد</h3>
-                <p className="text-[11px] text-slate-400">مشفر ولا يراه غيرك أبداً</p>
+                <h3 className="text-sm font-bold text-white">إضافة ملاحظة أو هدف جديد</h3>
+                <p className="text-[11px] text-slate-400">مشفرة وخاصة بحسابك فقط</p>
               </div>
             </div>
 
             <form onSubmit={handleAddSecret} className="space-y-3 text-xs">
               <div className="grid grid-cols-3 gap-1.5">
                 {[
-                  { id: "SECRET", label: "🔒 سر خاص" },
+                  { id: "SECRET", label: "🔒 ملاحظة خاصة" },
                   { id: "GOAL", label: "🎯 هدف" },
-                  { id: "NOTE", label: "📝 فضفضة" },
+                  { id: "NOTE", label: "📝 تذكرة" },
                 ].map((cat) => (
                   <button
                     key={cat.id}
@@ -601,7 +595,7 @@ export default function StudentAiCompanionPage() {
                 required
                 value={secretContent}
                 onChange={(e) => setSecretContent(e.target.value)}
-                placeholder="اكتب أي سر أو هدف أو حاجة حابب تحتفظ بيها بينك وبين رفيقك الذكي..."
+                placeholder="اكتب ملاحظتك، هدفك الدراسي، أو أي حاجة حابب تحتفظ بيها هنا..."
                 className="w-full p-3 bg-slate-950 border border-slate-800 rounded-2xl text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
               />
 
@@ -611,7 +605,7 @@ export default function StudentAiCompanionPage() {
                 className="w-full py-3 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all"
               >
                 <Plus className="w-4 h-4" />
-                <span>{savingSecret ? "جاري التشفير والحفظ..." : "حفظ في خزنتي المشفرة"}</span>
+                <span>{savingSecret ? "جاري الحفظ..." : "حفظ في ملاحظاتي الخاصة"}</span>
               </button>
             </form>
           </div>
@@ -620,7 +614,7 @@ export default function StudentAiCompanionPage() {
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
                 <Lock className="w-4 h-4 text-violet-400" />
-                <span>أسراري المحفوظة ({secrets.length})</span>
+                <span>ملاحظاتي المحفوظة ({secrets.length})</span>
               </h3>
               <span className="text-[10px] text-emerald-400 font-mono">AES-256-GCM Encrypted</span>
             </div>
@@ -629,7 +623,7 @@ export default function StudentAiCompanionPage() {
               <div className="p-10 bg-slate-950/50 border border-slate-800 rounded-2xl text-center space-y-2">
                 <Lock className="w-10 h-10 text-slate-600 mx-auto" />
                 <p className="text-xs text-slate-400">
-                  خزنتك السرية فاضية حالياً. أي سر تحفظه هنا أو في الشات بيتشفر لحسابك لوحدك.
+                  مفيش ملاحظات محفوظة حالياً. تقدر تحفظ هنا أهدافك أو أي حاجة حابب تحتفظ بيها لنفسك.
                 </p>
               </div>
             ) : (
@@ -642,7 +636,7 @@ export default function StudentAiCompanionPage() {
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 text-[10px]">
                         <span className="px-2 py-0.5 rounded-md bg-violet-500/15 text-violet-300 border border-violet-500/30 font-bold">
-                          {sec.category === "GOAL" ? "🎯 هدف" : sec.category === "NOTE" ? "📝 فضفضة" : "🔒 سر"}
+                          {sec.category === "GOAL" ? "🎯 هدف" : sec.category === "NOTE" ? "📝 تذكرة" : "🔒 ملاحظة خاصة"}
                         </span>
                         <span className="text-slate-500 font-mono">
                           {new Date(sec.createdAt).toLocaleDateString("ar-EG")}
