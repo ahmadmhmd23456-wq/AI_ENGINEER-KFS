@@ -195,16 +195,37 @@ export default function StudentExamPage({
       }
     };
 
+    let blurSubmitTimer: ReturnType<typeof setTimeout> | null = null;
+
     const handleVisibilityChange = () => {
       if (document.hidden) {
+        if (blurSubmitTimer) clearTimeout(blurSubmitTimer);
         forceSubmitOnViolation("تم الخروج من تبويب الامتحان أو فتح أداة خارجية");
       }
     };
 
     const handleWindowBlur = () => {
-      // مهلة أولية قصيرة عند فتح الصفحة فقط، بعدها أي خروج أو فتح أداة تصوير يسلم الامتحان فوراً
-      if (Date.now() - mountedAt < 800) return;
-      forceSubmitOnViolation("تم الخروج من نافذة الامتحان أو فتح أداة تصوير خارجية");
+      // مهلة أولية قصيرة عند فتح الصفحة فقط
+      if (Date.now() - mountedAt < 1000 || forcedSubmitRef.current) return;
+      // تعتيم فوري للشاشة بمجرد فقدان التركيز لمنع أداة القص Win+Shift+S من التقاط الأسئلة
+      setIsScreenProtected(true);
+      setProtectionReason("تم رصد مغادرة نافذة الامتحان — يرجى البقاء داخل الامتحان وإلا سيتم التسليم تلقائياً");
+      if (blurSubmitTimer) clearTimeout(blurSubmitTimer);
+      blurSubmitTimer = setTimeout(() => {
+        if (!document.hasFocus() && !forcedSubmitRef.current) {
+          forceSubmitOnViolation("تم الخروج من نافذة الامتحان أو فتح أداة تصوير خارجية");
+        }
+      }, 1500);
+    };
+
+    const handleWindowFocus = () => {
+      if (blurSubmitTimer) {
+        clearTimeout(blurSubmitTimer);
+        blurSubmitTimer = null;
+      }
+      if (!forcedSubmitRef.current) {
+        setIsScreenProtected(false);
+      }
     };
 
     const handlePageHide = () => {
@@ -292,6 +313,7 @@ export default function StudentExamPage({
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("focus", handleWindowFocus);
     window.addEventListener("pagehide", handlePageHide);
     window.addEventListener("keydown", handleKeyDownOrUp, true);
     window.addEventListener("keyup", handleKeyDownOrUp, true);
@@ -303,8 +325,10 @@ export default function StudentExamPage({
     window.addEventListener("dragstart", handleDragStart);
 
     return () => {
+      if (blurSubmitTimer) clearTimeout(blurSubmitTimer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("focus", handleWindowFocus);
       window.removeEventListener("pagehide", handlePageHide);
       window.removeEventListener("keydown", handleKeyDownOrUp, true);
       window.removeEventListener("keyup", handleKeyDownOrUp, true);
