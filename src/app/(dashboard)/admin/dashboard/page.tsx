@@ -14,12 +14,45 @@ import {
   Clock,
   CheckCircle,
   Video,
+  Bot,
+  Sparkles,
+  KeyRound,
+  Save,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
 } from "lucide-react";
 
 export default function AdminDashboardPage() {
   const router = useRouter();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
+  // إعدادات محرك الذكاء الاصطناعي الحر للطلاب
+  const [aiConfig, setAiConfig] = useState<any>(null);
+  const [showAiSetup, setShowAiSetup] = useState(false);
+  const [geminiKey, setGeminiKey] = useState("");
+  const [groqKey, setGroqKey] = useState("");
+  const [openRouterKey, setOpenRouterKey] = useState("");
+  const [openAiKey, setOpenAiKey] = useState("");
+  const [savingAi, setSavingAi] = useState(false);
+  const [testingAi, setTestingAi] = useState(false);
+  const [aiFeedback, setAiFeedback] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
+  const fetchAiConfig = () => {
+    fetch("/api/admin/ai-config")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json?.config) {
+          setAiConfig(json.config);
+          if (json.config.hasGeminiKey) setGeminiKey("••••••••••••");
+          if (json.config.hasGroqKey) setGroqKey("••••••••••••");
+          if (json.config.hasOpenRouterKey) setOpenRouterKey("••••••••••••");
+          if (json.config.hasOpenAiKey) setOpenAiKey("••••••••••••");
+        }
+      })
+      .catch(() => {});
+  };
 
   const fetchStats = () => {
     setLoading(true);
@@ -34,7 +67,66 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     fetchStats();
+    fetchAiConfig();
   }, []);
+
+  const handleSaveAiConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingAi(true);
+    setAiFeedback(null);
+    try {
+      const res = await fetch("/api/admin/ai-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "SAVE_CONFIG",
+          geminiKey,
+          groqKey,
+          openRouterKey,
+          openAiKey,
+        }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setAiConfig(json.config);
+        setAiFeedback({ type: "ok", text: json.message });
+      } else {
+        setAiFeedback({ type: "err", text: json.error || "فشل حفظ المفاتيح" });
+      }
+    } catch {
+      setAiFeedback({ type: "err", text: "تعذر الاتصال بالسيرفر" });
+    } finally {
+      setSavingAi(false);
+    }
+  };
+
+  const handleTestAi = async () => {
+    setTestingAi(true);
+    setAiFeedback(null);
+    try {
+      const res = await fetch("/api/admin/ai-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "TEST_AI" }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setAiFeedback({
+          type: "ok",
+          text: `${json.message}\nرد تجريبي: "${json.reply}"`,
+        });
+      } else {
+        setAiFeedback({
+          type: "err",
+          text: json.error || "لم يتم اختبار المزود بنجاح",
+        });
+      }
+    } catch {
+      setAiFeedback({ type: "err", text: "حدث خطأ أثناء الاتصال" });
+    } finally {
+      setTestingAi(false);
+    }
+  };
 
   if (loading && !data) {
     return (
@@ -323,6 +415,179 @@ export default function AdminDashboardPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* بطاقة ربط وتفعيل محرك الذكاء الاصطناعي الحر (ChatGPT / Gemini / Groq) */}
+      <div className="bg-slate-900/90 border border-cyan-500/25 rounded-3xl p-5 sm:p-6 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div
+              className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${
+                aiConfig?.isConfigured
+                  ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                  : "bg-cyan-500/15 text-cyan-400 border border-cyan-500/30"
+              }`}
+            >
+              <Bot className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-base font-bold text-white">
+                  محرك الذكاء الاصطناعي الحر للطلاب (ChatGPT / Gemini)
+                </h2>
+                {aiConfig?.isConfigured ? (
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                    🟢 مفعل عبر {aiConfig.activeProvider}
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                    ⚡ يعمل بالوضع التفاعلي (أضف مفتاح مجاني للذكاء الكامل)
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                أضف مفتاح مجاني من Google Gemini أو Groq أو OpenRouter ليحصل الطلاب على محادثات حرة كاملة بجودة ChatGPT مع حفظ المفاتيح مشفرة AES-256.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowAiSetup((prev) => !prev)}
+            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white border border-slate-700 flex items-center gap-1.5 self-start sm:self-auto"
+          >
+            <KeyRound className="w-4 h-4 text-cyan-400" />
+            <span>{showAiSetup ? "إخفاء الإعدادات" : "إعداد وتفعيل الذكاء"}</span>
+            {showAiSetup ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+        </div>
+
+        {showAiSetup && (
+          <div className="mt-5 pt-5 border-t border-slate-800 grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <form onSubmit={handleSaveAiConfig} className="lg:col-span-2 space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">
+                    Google Gemini API Key (الأفضل ومجاني)
+                  </label>
+                  <input
+                    type="password"
+                    dir="ltr"
+                    value={geminiKey}
+                    onChange={(e) => setGeminiKey(e.target.value)}
+                    placeholder="AIzaSy..."
+                    className="w-full py-2.5 px-3 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">
+                    Groq API Key (مجاني وسريع جداً)
+                  </label>
+                  <input
+                    type="password"
+                    dir="ltr"
+                    value={groqKey}
+                    onChange={(e) => setGroqKey(e.target.value)}
+                    placeholder="gsk_..."
+                    className="w-full py-2.5 px-3 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">
+                    OpenRouter API Key (نماذج مجانية)
+                  </label>
+                  <input
+                    type="password"
+                    dir="ltr"
+                    value={openRouterKey}
+                    onChange={(e) => setOpenRouterKey(e.target.value)}
+                    placeholder="sk-or-v1-..."
+                    className="w-full py-2.5 px-3 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">
+                    OpenAI API Key (اختياري - مدفوع)
+                  </label>
+                  <input
+                    type="password"
+                    dir="ltr"
+                    value={openAiKey}
+                    onChange={(e) => setOpenAiKey(e.target.value)}
+                    placeholder="sk-..."
+                    className="w-full py-2.5 px-3 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+              </div>
+
+              {aiFeedback && (
+                <div
+                  className={`p-3 rounded-xl text-xs whitespace-pre-wrap border ${
+                    aiFeedback.type === "ok"
+                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                      : "bg-red-500/10 border-red-500/30 text-red-300"
+                  }`}
+                >
+                  {aiFeedback.text}
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={savingAi}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold flex items-center gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{savingAi ? "جاري الحفظ..." : "حفظ المفاتيح وتشفيرها"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleTestAi}
+                  disabled={testingAi}
+                  className="px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-bold flex items-center gap-2"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>{testingAi ? "جاري الاختبار..." : "اختبار الذكاء الآن"}</span>
+                </button>
+              </div>
+            </form>
+
+            <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-3 text-xs">
+              <div className="font-bold text-cyan-400">كيف تجيب مفتاح مجاني في دقيقة؟</div>
+              <ol className="text-[11px] text-slate-300 space-y-2 list-decimal pr-4 leading-relaxed">
+                <li>
+                  افتح Google AI Studio واضغط <b>Create API Key</b> بحساب Google بتاعك.
+                  <a
+                    href="https://aistudio.google.com/apikey"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-flex items-center gap-1 text-cyan-400 hover:underline font-bold"
+                  >
+                    <span>فتح Google AI Studio</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </li>
+                <li>أو أنشئ مفتاح مجاني سريع من Groq (Llama 3.3 70B):
+                  <a
+                    href="https://console.groq.com/keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block mt-0.5 inline-flex items-center gap-1 text-cyan-400 hover:underline font-bold"
+                  >
+                    <span>فتح Groq Console</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </li>
+                <li>الصق المفتاح هنا واضغط <b>حفظ</b> ثم <b>اختبار الذكاء الآن</b>.</li>
+              </ol>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -452,31 +452,223 @@ function parseStructuredAiOutput(raw: string): ParsedAiReply {
   return { reply: trimmed.replace(/^```(?:json)?/i, "").trim(), reactToUser: null, sticker: null };
 }
 
-async function getOptionalAiKeys(): Promise<{
+const AI_LLM_VAULT_ID = "PLATFORM_AI_LLM_VAULT";
+const AI_LLM_SETTING_KEY = "AI_LLM_CONFIG";
+
+export interface AiLlmConfig {
   geminiKey?: string;
-  openAiKey?: string;
   groqKey?: string;
-}> {
+  openRouterKey?: string;
+  openAiKey?: string;
+}
+
+export async function getOptionalAiKeys(): Promise<AiLlmConfig> {
   let geminiKey = process.env.GEMINI_API_KEY;
-  let openAiKey = process.env.OPENAI_API_KEY;
   let groqKey = process.env.GROQ_API_KEY;
+  let openRouterKey = process.env.OPENROUTER_API_KEY;
+  let openAiKey = process.env.OPENAI_API_KEY;
 
   try {
-    const row = await prisma.platformSetting.findUnique({ where: { key: "AI_LLM_CONFIG" } });
+    const row = await prisma.platformSetting.findUnique({ where: { key: AI_LLM_SETTING_KEY } });
     if (row?.value) {
-      const dec = decryptForUser("PLATFORM_AI_LLM_VAULT", row.value);
+      const dec = decryptForUser(AI_LLM_VAULT_ID, row.value);
       if (dec && !dec.startsWith("[")) {
-        const parsed = JSON.parse(dec);
+        const parsed = JSON.parse(dec) as AiLlmConfig;
         geminiKey = parsed.geminiKey || geminiKey;
-        openAiKey = parsed.openAiKey || openAiKey;
         groqKey = parsed.groqKey || groqKey;
+        openRouterKey = parsed.openRouterKey || openRouterKey;
+        openAiKey = parsed.openAiKey || openAiKey;
+      }
+    }
+  } catch {
+    // تجاهل والعودة لمتغيرات البيئة
+  }
+
+  return { geminiKey, groqKey, openRouterKey, openAiKey };
+}
+
+export async function saveAiLlmConfig(input: AiLlmConfig): Promise<void> {
+  let existing: AiLlmConfig = {};
+  try {
+    const row = await prisma.platformSetting.findUnique({ where: { key: AI_LLM_SETTING_KEY } });
+    if (row?.value) {
+      const dec = decryptForUser(AI_LLM_VAULT_ID, row.value);
+      if (dec && !dec.startsWith("[")) {
+        existing = JSON.parse(dec);
       }
     }
   } catch {
     // تجاهل
   }
 
-  return { geminiKey, openAiKey, groqKey };
+  const pickKey = (nextVal?: string, prevVal?: string) => {
+    if (nextVal === undefined) return prevVal || "";
+    const t = nextVal.trim();
+    if (!t) return "";
+    if (t.includes("••••")) return prevVal || "";
+    return t;
+  };
+
+  const merged: AiLlmConfig = {
+    geminiKey: pickKey(input.geminiKey, existing.geminiKey),
+    groqKey: pickKey(input.groqKey, existing.groqKey),
+    openRouterKey: pickKey(input.openRouterKey, existing.openRouterKey),
+    openAiKey: pickKey(input.openAiKey, existing.openAiKey),
+  };
+
+  const encrypted = encryptForUser(AI_LLM_VAULT_ID, JSON.stringify(merged));
+  await prisma.platformSetting.upsert({
+    where: { key: AI_LLM_SETTING_KEY },
+    update: { value: encrypted },
+    create: { key: AI_LLM_SETTING_KEY, value: encrypted },
+  });
+}
+
+export async function getAiLlmConfigSummary() {
+  const keys = await getOptionalAiKeys();
+  const activeProvider = keys.geminiKey
+    ? "GEMINI"
+    : keys.groqKey
+    ? "GROQ"
+    : keys.openRouterKey
+    ? "OPENROUTER"
+    : keys.openAiKey
+    ? "OPENAI"
+    : "NONE";
+
+  return {
+    isConfigured: activeProvider !== "NONE",
+    activeProvider,
+    hasGeminiKey: Boolean(keys.geminiKey),
+    hasGroqKey: Boolean(keys.groqKey),
+    hasOpenRouterKey: Boolean(keys.openRouterKey),
+    hasOpenAiKey: Boolean(keys.openAiKey),
+  };
+}
+
+async function callOpenAiCompatible(params: {
+  endpoint: string;
+  apiKey: string;
+  model: string;
+  systemInstruction: string;
+  recentMessages: { role: string; content: string }[];
+  userInput: string;
+  jsonMode?: boolean;
+}): Promise<{ ok: boolean; text?: string; error?: string }> {
+  try {
+    const res = await fetch(params.endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${params.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: params.model,
+        messages: [
+          { role: "system", content: params.systemInstruction },
+          ...params.recentMessages.slice(-10).map((m) => ({
+            role: m.role === "ASSISTANT" ? "assistant" : "user",
+            content: m.content,
+          })),
+          { role: "user", content: params.userInput },
+        ],
+        temperature: 0.9,
+        max_tokens: 900,
+        ...(params.jsonMode ? { response_format: { type: "json_object" } } : {}),
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => "");
+      return { ok: false, error: `HTTP ${res.status}: ${errBody.slice(0, 160)}` };
+    }
+    const data = await res.json();
+    const text = data?.choices?.[0]?.message?.content;
+    return text ? { ok: true, text } : { ok: false, error: "رد فارغ من المزود" };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || "فشل الاتصال بالمزود" };
+  }
+}
+
+export async function testConfiguredAiProvider(): Promise<{
+  ok: boolean;
+  provider: string;
+  reply?: string;
+  error?: string;
+}> {
+  const { geminiKey, groqKey, openRouterKey, openAiKey } = await getOptionalAiKeys();
+  const prompt = "رد بجملة قصيرة واحدة بالعامية المصرية كأنك زميل طالب هندسة: قول إن النظام شغال تمام.";
+
+  if (geminiKey) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.7, maxOutputTokens: 120 },
+          }),
+          signal: AbortSignal.timeout(12000),
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) return { ok: true, provider: "Google Gemini (gemini-2.5-flash)", reply: text.trim() };
+      }
+      const errText = await res.text().catch(() => "");
+      return { ok: false, provider: "Gemini", error: `HTTP ${res.status}: ${errText.slice(0, 180)}` };
+    } catch (e: any) {
+      return { ok: false, provider: "Gemini", error: e?.message || "فشل الاتصال بـ Gemini" };
+    }
+  }
+
+  if (groqKey) {
+    const r = await callOpenAiCompatible({
+      endpoint: "https://api.groq.com/openai/v1/chat/completions",
+      apiKey: groqKey,
+      model: "llama-3.3-70b-versatile",
+      systemInstruction: "أنت زميل طالب هندسة مصري ودود.",
+      recentMessages: [],
+      userInput: prompt,
+    });
+    return r.ok
+      ? { ok: true, provider: "Groq (Llama 3.3 70B)", reply: r.text?.trim() }
+      : { ok: false, provider: "Groq", error: r.error };
+  }
+
+  if (openRouterKey) {
+    const r = await callOpenAiCompatible({
+      endpoint: "https://openrouter.ai/api/v1/chat/completions",
+      apiKey: openRouterKey,
+      model: "meta-llama/llama-3.3-70b-instruct:free",
+      systemInstruction: "أنت زميل طالب هندسة مصري ودود.",
+      recentMessages: [],
+      userInput: prompt,
+    });
+    return r.ok
+      ? { ok: true, provider: "OpenRouter Free", reply: r.text?.trim() }
+      : { ok: false, provider: "OpenRouter", error: r.error };
+  }
+
+  if (openAiKey) {
+    const r = await callOpenAiCompatible({
+      endpoint: "https://api.openai.com/v1/chat/completions",
+      apiKey: openAiKey,
+      model: "gpt-4o-mini",
+      systemInstruction: "أنت زميل طالب هندسة مصري ودود.",
+      recentMessages: [],
+      userInput: prompt,
+    });
+    return r.ok
+      ? { ok: true, provider: "OpenAI (gpt-4o-mini)", reply: r.text?.trim() }
+      : { ok: false, provider: "OpenAI", error: r.error };
+  }
+
+  return { ok: false, provider: "NONE", error: "لم يتم حفظ أي مفتاح ذكاء اصطناعي بعد." };
 }
 
 export async function generateAiCompanionReply(params: {
@@ -566,7 +758,7 @@ export async function generateAiCompanionReply(params: {
   }
 
   // 3. تجهيز سياق الدردشة الحرة بمستوى ChatGPT + شخصية الزميل المصري
-  const { geminiKey, openAiKey, groqKey } = await getOptionalAiKeys();
+  const { geminiKey, openAiKey, groqKey, openRouterKey } = await getOptionalAiKeys();
 
   const lectureSummaryText = [
     `المواد المشترك بها: ${context.enrolledSubjectsCount}`,
@@ -676,79 +868,49 @@ ${stickerMenuText}
     }
   }
 
-  // محاولة 2: OpenAI API
-  if (openAiKey) {
-    try {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${openAiKey}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [
-            { role: "system", content: systemInstruction },
-            ...recentMessages.slice(-10).map((m) => ({
-              role: m.role === "ASSISTANT" ? "assistant" : "user",
-              content: m.content,
-            })),
-            { role: "user", content: effectiveUserInput },
-          ],
-          temperature: 0.9,
-          max_tokens: 900,
-          response_format: { type: "json_object" },
-        }),
-        signal: AbortSignal.timeout(15000),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const text = data?.choices?.[0]?.message?.content;
-        if (text) {
-          const parsed = parseStructuredAiOutput(text);
-          return { ...parsed, savedSecret, phoneDispatch };
-        }
-      }
-    } catch (err) {
-      console.error("OpenAI Companion Error:", err);
-    }
-  }
-
-  // محاولة 3: Groq API
-  if (groqKey) {
-    try {
-      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${groqKey}`,
-        },
-        body: JSON.stringify({
+  // محاولة 2: Groq / OpenRouter / OpenAI عبر الواجهة الموحدة
+  const openAiCompatibleProviders = [
+    groqKey
+      ? {
+          endpoint: "https://api.groq.com/openai/v1/chat/completions",
+          apiKey: groqKey,
           model: "llama-3.3-70b-versatile",
-          messages: [
-            { role: "system", content: systemInstruction },
-            ...recentMessages.slice(-10).map((m) => ({
-              role: m.role === "ASSISTANT" ? "assistant" : "user",
-              content: m.content,
-            })),
-            { role: "user", content: effectiveUserInput },
-          ],
-          temperature: 0.9,
-          max_tokens: 900,
-          response_format: { type: "json_object" },
-        }),
-        signal: AbortSignal.timeout(15000),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const text = data?.choices?.[0]?.message?.content;
-        if (text) {
-          const parsed = parseStructuredAiOutput(text);
-          return { ...parsed, savedSecret, phoneDispatch };
+          jsonMode: true,
         }
+      : null,
+    openRouterKey
+      ? {
+          endpoint: "https://openrouter.ai/api/v1/chat/completions",
+          apiKey: openRouterKey,
+          model: "meta-llama/llama-3.3-70b-instruct:free",
+          jsonMode: false,
+        }
+      : null,
+    openAiKey
+      ? {
+          endpoint: "https://api.openai.com/v1/chat/completions",
+          apiKey: openAiKey,
+          model: "gpt-4o-mini",
+          jsonMode: true,
+        }
+      : null,
+  ].filter(Boolean) as { endpoint: string; apiKey: string; model: string; jsonMode: boolean }[];
+
+  for (const prov of openAiCompatibleProviders) {
+    const r = await callOpenAiCompatible({
+      endpoint: prov.endpoint,
+      apiKey: prov.apiKey,
+      model: prov.model,
+      systemInstruction,
+      recentMessages,
+      userInput: effectiveUserInput,
+      jsonMode: prov.jsonMode,
+    });
+    if (r.ok && r.text) {
+      const parsed = parseStructuredAiOutput(r.text);
+      if (isCleanLlmReply(parsed.reply)) {
+        return { ...parsed, savedSecret, phoneDispatch };
       }
-    } catch (err) {
-      console.error("Groq Companion Error:", err);
     }
   }
 
