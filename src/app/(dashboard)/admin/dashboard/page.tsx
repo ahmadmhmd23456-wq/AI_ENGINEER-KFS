@@ -475,7 +475,7 @@ export default function AdminDashboardPage() {
                     dir="ltr"
                     value={geminiKey}
                     onChange={(e) => setGeminiKey(e.target.value)}
-                    placeholder="AIzaSy..."
+                    placeholder="AQ... أو AIzaSy..."
                     className="w-full py-2.5 px-3 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono focus:outline-none focus:border-cyan-500"
                   />
                 </div>

@@ -591,6 +591,63 @@ async function callOpenAiCompatible(params: {
   }
 }
 
+async function callGemini(params: {
+  apiKey: string;
+  systemInstruction?: string;
+  contents: { role: string; parts: { text: string }[] }[];
+  jsonMode?: boolean;
+  maxOutputTokens?: number;
+  temperature?: number;
+}): Promise<{ ok: boolean; model?: string; text?: string; error?: string }> {
+  const models = ["gemini-3.8-flash", "gemini-2.5-flash"];
+  let lastError = "فشل الاتصال بـ Gemini";
+
+  for (const model of models) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(
+          params.apiKey
+        )}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...(params.systemInstruction
+              ? { systemInstruction: { parts: [{ text: params.systemInstruction }] } }
+              : {}),
+            contents: params.contents,
+            generationConfig: {
+              temperature: params.temperature ?? 0.9,
+              maxOutputTokens: params.maxOutputTokens ?? 2048,
+              ...(params.jsonMode ? { responseMimeType: "application/json" } : {}),
+            },
+          }),
+          signal: AbortSignal.timeout(18000),
+        }
+      );
+
+      if (res.ok) {
+        const data = await res.json();
+        const parts = data?.candidates?.[0]?.content?.parts || [];
+        const replyPart = parts.find((p: any) => !p?.thought && typeof p?.text === "string");
+        if (replyPart?.text) {
+          return { ok: true, model, text: replyPart.text };
+        }
+        lastError = `رد فارغ من ${model}`;
+      } else {
+        const errText = await res.text().catch(() => "");
+        lastError = `HTTP ${res.status} (${model}): ${errText.slice(0, 180)}`;
+        // لو المفتاح نفسه مرفوض لا داعي لتكرار النموذج
+        if (res.status === 400 || res.status === 401 || res.status === 403) break;
+      }
+    } catch (e: any) {
+      lastError = e?.message || `فشل الاتصال بـ ${model}`;
+    }
+  }
+
+  return { ok: false, error: lastError };
+}
+
 export async function testConfiguredAiProvider(): Promise<{
   ok: boolean;
   provider: string;
@@ -601,29 +658,15 @@ export async function testConfiguredAiProvider(): Promise<{
   const prompt = "رد بجملة قصيرة واحدة بالعامية المصرية كأنك زميل طالب هندسة: قول إن النظام شغال تمام.";
 
   if (geminiKey) {
-    try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.7, maxOutputTokens: 120 },
-          }),
-          signal: AbortSignal.timeout(12000),
-        }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) return { ok: true, provider: "Google Gemini (gemini-2.5-flash)", reply: text.trim() };
-      }
-      const errText = await res.text().catch(() => "");
-      return { ok: false, provider: "Gemini", error: `HTTP ${res.status}: ${errText.slice(0, 180)}` };
-    } catch (e: any) {
-      return { ok: false, provider: "Gemini", error: e?.message || "فشل الاتصال بـ Gemini" };
-    }
+    const g = await callGemini({
+      apiKey: geminiKey,
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      maxOutputTokens: 512,
+      temperature: 0.7,
+    });
+    return g.ok
+      ? { ok: true, provider: `Google Gemini (${g.model})`, reply: g.text?.trim() }
+      : { ok: false, provider: "Gemini", error: g.error };
   }
 
   if (groqKey) {
@@ -828,43 +871,25 @@ ${stickerMenuText}
 
   // محاولة 1: Gemini API
   if (geminiKey) {
-    try {
-      const contents = [
-        ...recentMessages.slice(-10).map((m) => ({
-          role: m.role === "ASSISTANT" ? "model" : "user",
-          parts: [{ text: m.content }],
-        })),
-        { role: "user", parts: [{ text: effectiveUserInput }] },
-      ];
+    const contents = [
+      ...recentMessages.slice(-10).map((m) => ({
+        role: m.role === "ASSISTANT" ? "model" : "user",
+        parts: [{ text: m.content }],
+      })),
+      { role: "user", parts: [{ text: effectiveUserInput }] },
+    ];
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: systemInstruction }] },
-            contents,
-            generationConfig: {
-              temperature: 0.9,
-              maxOutputTokens: 900,
-              responseMimeType: "application/json",
-            },
-          }),
-          signal: AbortSignal.timeout(15000),
-        }
-      );
-
-      if (res.ok) {
-        const data = await res.json();
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) {
-          const parsed = parseStructuredAiOutput(text);
-          return { ...parsed, savedSecret, phoneDispatch };
-        }
-      }
-    } catch (err) {
-      console.error("Gemini Companion Error:", err);
+    const g = await callGemini({
+      apiKey: geminiKey,
+      systemInstruction,
+      contents,
+      jsonMode: true,
+      maxOutputTokens: 2048,
+      temperature: 0.9,
+    });
+    if (g.ok && g.text) {
+      const parsed = parseStructuredAiOutput(g.text);
+      return { ...parsed, savedSecret, phoneDispatch };
     }
   }
 
