@@ -106,7 +106,7 @@ export async function GET() {
     }
 
     const rawSecrets = await prisma.aiPrivateSecret.findMany({
-      where: { userId },
+      where: { userId, category: { not: "ABUSE_WARN" } },
       orderBy: { createdAt: "desc" },
     });
 
@@ -190,7 +190,7 @@ export async function POST(req: NextRequest) {
 
       const [rawSecrets, rawHistory] = await Promise.all([
         prisma.aiPrivateSecret.findMany({
-          where: { userId },
+          where: { userId, category: { not: "ABUSE_WARN" } },
           orderBy: { createdAt: "desc" },
         }),
         prisma.aiChatMessage.findMany({
@@ -218,10 +218,18 @@ export async function POST(req: NextRequest) {
           };
         });
 
+      const ipAddress =
+        req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+        req.headers.get("x-real-ip") ||
+        "unknown";
+      const userAgent = req.headers.get("user-agent") || "web-chat";
+
       const result = await generateAiCompanionReply({
         userId,
         userMessage: messageText,
         userSticker,
+        ipAddress,
+        userAgent,
         context,
         decryptedSecrets,
         recentMessages,
@@ -349,7 +357,7 @@ export async function POST(req: NextRequest) {
     if (action === "DELETE_SECRET") {
       const secretId = String(body.secretId || "");
       await prisma.aiPrivateSecret.deleteMany({
-        where: { id: secretId, userId },
+        where: { id: secretId, userId, category: { not: "ABUSE_WARN" } },
       });
       return NextResponse.json({ success: true });
     }

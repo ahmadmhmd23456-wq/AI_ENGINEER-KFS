@@ -1,6 +1,6 @@
 import prisma from "./prisma";
 import { encryptForUser, decryptForUser } from "./ai-crypto";
-import { sendWhatsAppMessage, formatEgyptianPhone } from "./whatsapp";
+import { sendWhatsAppMessage, sendWhatsAppAlertToAdmin, formatEgyptianPhone } from "./whatsapp";
 import { formatDurationArabic } from "./video-helper";
 import { AI_STICKERS, STICKER_MAP } from "./ai-stickers";
 
@@ -491,6 +491,124 @@ function scrubOldNameFromText(text: string, oldName: string, newNickname: string
   return text.replace(new RegExp(`(^|[\\s،,.!؟\\(\\[])${escaped}(?=$|[\\s،,.!؟\\)\\]])`, "g"), `$1${newNickname}`);
 }
 
+function detectInsultOrProfanity(text: string): boolean {
+  const norm = normalizeArabic(text)
+    .replace(/[\u064B-\u065F\u0640]/g, "")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!norm) return false;
+
+  const exactWords = [
+    "كسم",
+    "كسمك",
+    "كسخت",
+    "احا",
+    "خول",
+    "عرص",
+    "متناك",
+    "منيوك",
+    "شرموط",
+    "شرموطه",
+    "قحبه",
+    "لبوه",
+    "وسخ",
+    "ابن الوسخه",
+    "ابن الكلب",
+    "ابن الشرموطه",
+    "ابن القحبه",
+    "يا كلب",
+    "يا حمار",
+    "يا حيوان",
+    "يا غبي",
+    "يا تافه",
+    "يا جزمه",
+    "يا زباله",
+    "انت غبي",
+    "انت حمار",
+    "انت كلب",
+    "انت حيوان",
+    "انت تافه",
+    "انت زباله",
+    "انت وسخ",
+    "يلعن",
+    "دين ام",
+    "انيك",
+    "يتناك",
+    "طيز",
+    "زبي",
+    "fuck",
+    "bitch",
+    "asshole",
+    "bastard",
+    "motherfucker",
+    "dickhead",
+    "slut",
+    "whore",
+  ];
+
+  const padded = ` ${norm} `;
+  return exactWords.some((w) => padded.includes(` ${w} `));
+}
+
+async function handleInsultWarning(params: {
+  userId: string;
+  userName: string;
+  ipAddress?: string;
+  userAgent?: string;
+}): Promise<{ reply: string; escalatedToAdmin: boolean }> {
+  const existingWarns = await prisma.aiPrivateSecret.count({
+    where: { userId: params.userId, category: "ABUSE_WARN" },
+  });
+
+  await prisma.aiPrivateSecret.create({
+    data: {
+      userId: params.userId,
+      encryptedTitle: encryptForUser(params.userId, "تحذير مخالفة سلوك"),
+      encryptedContent: encryptForUser(params.userId, `warn-${existingWarns + 1}`),
+      category: "ABUSE_WARN",
+    },
+  });
+
+  if (existingWarns === 0) {
+    return {
+      reply:
+        "لو اتكرر الكلام ده هيوصل للأدمن وممكن يقفل عليك المنصة، أنا هنا علشان أساعدك مش عشان تشتمني.",
+      escalatedToAdmin: false,
+    };
+  }
+
+  // عند التكرار: إرسال بلاغ فعلي في سجل الرقابة للأدمن
+  try {
+    await prisma.auditLog.create({
+      data: {
+        userId: params.userId,
+        action: "AI_ABUSE_REPORTED",
+        ipAddress: params.ipAddress || "unknown",
+        userAgent: params.userAgent || "web-chat",
+        reason: `تكرار توجيه شتائم وألفاظ غير لائقة في الشات بعد التحذير الأول (المخالفة رقم ${
+          existingWarns + 1
+        })`,
+      },
+    });
+    sendWhatsAppAlertToAdmin(
+      process.env.ADMIN_PHONE || "01065375309",
+      `⚠️ تنبيه مخالفة: الطالب "${params.userName}" كرر توجيه شتائم في الشات بعد التحذير الأول (المخالفة #${
+        existingWarns + 1
+      }).`
+    ).catch(() => {});
+  } catch {
+    // تجاهل أي خطأ في تسجيل البلاغ
+  }
+
+  return {
+    reply:
+      "الكلام ده اتكرر رغم التحذير، وتم إرسال تنبيه للأدمن فعلاً لمراجعة حسابك وممكن يقفل عليك المنصة. أنا هنا علشان أساعدك مش عشان تشتمني.",
+    escalatedToAdmin: true,
+  };
+}
+
 function isCleanLlmReply(text: string): boolean {
   if (!text || text.trim().length < 2) return false;
   // منع أي حروف صينية/يابانية/كورية مشوهة قد تصدر أحياناً من بعض النماذج المفتوحة
@@ -503,6 +621,7 @@ interface ParsedAiReply {
   reactToUser?: string | null;
   sticker?: string | null;
   preferredNickname?: string | null;
+  isInsult?: boolean;
 }
 
 function parseStructuredAiOutput(raw: string): ParsedAiReply {
@@ -533,6 +652,7 @@ function parseStructuredAiOutput(raw: string): ParsedAiReply {
           reactToUser: validReact,
           sticker: validSticker,
           preferredNickname: validNickname,
+          isInsult: Boolean(obj.isInsult),
         };
       }
     } catch {
@@ -815,6 +935,8 @@ export async function generateAiCompanionReply(params: {
   userId: string;
   userMessage: string;
   userSticker?: string | null;
+  ipAddress?: string;
+  userAgent?: string;
   context: StudentLearningContext;
   decryptedSecrets: { id: string; title: string; content: string; category: string; createdAt: Date }[];
   recentMessages: { role: string; content: string }[];
@@ -826,7 +948,7 @@ export async function generateAiCompanionReply(params: {
   savedNickname?: { id: string; title: string; content: string };
   phoneDispatch?: { sent: boolean; phone: string | null; waDirectUrl: string | null };
 }> {
-  const { userId, userMessage, userSticker, context, decryptedSecrets, recentMessages } = params;
+  const { userId, userMessage, userSticker, ipAddress, userAgent, context, decryptedSecrets, recentMessages } = params;
   const userStickerDef = userSticker ? STICKER_MAP.get(userSticker) : null;
   const effectiveUserInput = userMessage.trim()
     ? userStickerDef
@@ -838,6 +960,21 @@ export async function generateAiCompanionReply(params: {
 
   const norm = normalizeArabic(effectiveUserInput);
   const oldFirstName = extractFirstName(context.user.name);
+
+  // فحص الشتائم والإهانة قبل أي شيء: تحذير حازم في المرة الأولى، وبلاغ للأدمن عند التكرار
+  if (detectInsultOrProfanity(userMessage)) {
+    const warn = await handleInsultWarning({
+      userId,
+      userName: context.user.name,
+      ipAddress,
+      userAgent,
+    });
+    return {
+      reply: warn.reply,
+      reactToUser: null,
+      sticker: null,
+    };
+  }
 
   // 0. فحص طلب تغيير الاسم المفضل الدائم (ومنع استخدام الاسم القديم نهائياً)
   let savedNickname: { id: string; title: string; content: string } | undefined;
@@ -1003,7 +1140,8 @@ ${stickerMenuText}
 - اعمل ريأكت بإيموجي واحد فقط لما الرسالة تستاهل فعلاً: نكتة تضحك (😂)، فضفضة أو ضيق (🫂)، إنجاز حلو (🔥 أو 👏)، أو شكر مؤثر (❤️).
 
 رد بصيغة JSON فقط:
-{"reactToUser":null,"sticker":null,"preferredNickname":null,"reply":"ردك القصير الرايق هنا"}`;
+{"reactToUser":null,"sticker":null,"preferredNickname":null,"isInsult":false,"reply":"ردك القصير الرايق هنا"}
+(ملاحظة: لو الطالب شتمك أو سبّك بأي لفظ بذيء أو مهين، خلي "isInsult": true فقط وهنرد عليه بتحذير الأدمن.)`;
 
   const applySelectiveReactionPolicy = (parsed: ParsedAiReply): ParsedAiReply => {
     const hasEmotionOrTrigger =
@@ -1040,6 +1178,20 @@ ${stickerMenuText}
   };
 
   const finalizeLlmResult = async (parsed: ParsedAiReply) => {
+    if (parsed.isInsult) {
+      const warn = await handleInsultWarning({
+        userId,
+        userName: context.user.name,
+        ipAddress,
+        userAgent,
+      });
+      return {
+        reply: warn.reply,
+        reactToUser: null,
+        sticker: null,
+      };
+    }
+
     let finalNick = activeNickname;
     if (!savedNickname && parsed.preferredNickname) {
       const saved = await savePreferredNickname(userId, parsed.preferredNickname);
