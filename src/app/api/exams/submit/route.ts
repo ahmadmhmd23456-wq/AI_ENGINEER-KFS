@@ -13,12 +13,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
     }
 
-    const { attemptId, answers, violationReason } = await req.json();
+    const { attemptId, answers, violationReason, isTimedOut } = await req.json();
 
     const result = await finalizeAndGradeAttempt(
       attemptId,
       userId,
-      false,
+      Boolean(isTimedOut),
       answers,
       Boolean(violationReason)
     );

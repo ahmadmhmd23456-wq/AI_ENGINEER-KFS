@@ -67,6 +67,9 @@ export default function StudentExamPage({
 
   const answersRef = useRef<Record<string, string>>({});
   answersRef.current = answers;
+  const attemptIdRef = useRef<string | null>(null);
+  attemptIdRef.current = attemptId;
+  const clientTargetEndTimeRef = useRef<number | null>(null);
   const lastViolationAtRef = useRef<number>(0);
   const forcedSubmitRef = useRef<boolean>(false);
 
@@ -74,6 +77,7 @@ export default function StudentExamPage({
   const [isFinished, setIsFinished] = useState(false);
   const [resultData, setResultData] = useState<any | null>(null);
   const [autoSubmittedReason, setAutoSubmittedReason] = useState<string | null>(null);
+  const [timedOutSubmitted, setTimedOutSubmitted] = useState(false);
   const [reviewFilter, setReviewFilter] = useState<"ALL" | "WRONG" | "CORRECT">("ALL");
 
   // 1. بدء أو استئناف الامتحان
@@ -91,11 +95,19 @@ export default function StudentExamPage({
         } else if (data.isFinished) {
           setIsFinished(true);
           setResultData(data.review || data.attempt);
+          if (data.attempt?.status === "TIMED_OUT") {
+            setTimedOutSubmitted(true);
+          }
         } else {
+          attemptIdRef.current = data.attemptId;
           setAttemptId(data.attemptId);
           setAssignedQuestions(data.assignedQuestions || []);
-          setAnswers(data.savedAnswers || {});
-          setRemainingSeconds(data.remainingSeconds || 0);
+          const initialAnswers = data.savedAnswers || {};
+          answersRef.current = initialAnswers;
+          setAnswers(initialAnswers);
+          const remSecs = Number(data.remainingSeconds || 0);
+          setRemainingSeconds(remSecs);
+          clientTargetEndTimeRef.current = Date.now() + remSecs * 1000;
           setTabSwitchCount(data.tabSwitchCount || 0);
           if (data.serverDueTime) setServerDueTime(new Date(data.serverDueTime));
         }
@@ -121,20 +133,19 @@ export default function StudentExamPage({
     }
   }, [isFinished, resultData, examId]);
 
-  // 2. إدارة المؤقت السيرفري بدقة
+  // 2. إدارة المؤقت السيرفري بدقة (بدون تأثر باختلاف ساعة جهاز الطالب أو إغلاقات قديمة)
   useEffect(() => {
     if (!serverDueTime || isFinished) return;
 
     const interval = setInterval(() => {
-      const now = new Date().getTime();
-      const due = new Date(serverDueTime).getTime();
-      const diff = Math.floor((due - now) / 1000);
+      const targetEnd = clientTargetEndTimeRef.current ?? new Date(serverDueTime).getTime();
+      const diff = Math.floor((targetEnd - Date.now()) / 1000);
 
       if (diff <= 0) {
         clearInterval(interval);
         setRemainingSeconds(0);
-        // تسليم تلقائي عند انتهاء الوقت السيرفري
-        handleSubmitExam(true);
+        // تسليم تلقائي فوري لما حله الطالب فقط عند انتهاء الوقت
+        confirmAndSubmitExam(true);
       } else {
         setRemainingSeconds(diff);
       }
@@ -341,35 +352,51 @@ export default function StudentExamPage({
     };
   }, [attemptId, isFinished]);
 
-  // 4. الحفظ التلقائي الدوري كل 12 ثانية
+  // 4. الحفظ الفوري والمزامنة التلقائية للإجابات لضمان عدم ضياع أي سؤال عند انتهاء الوقت
   useEffect(() => {
     if (!attemptId || isFinished) return;
 
-    const autoSaveInterval = setInterval(() => {
+    const saveNow = () => {
       setIsAutoSaving(true);
       fetch("/api/exams/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        keepalive: true,
         body: JSON.stringify({
-          attemptId,
-          answers,
+          attemptId: attemptIdRef.current || attemptId,
+          answers: answersRef.current,
           tabSwitched: false,
         }),
       })
         .then(() => setIsAutoSaving(false))
         .catch(() => setIsAutoSaving(false));
-    }, 12000);
+    };
 
-    return () => clearInterval(autoSaveInterval);
+    const debounceSave = setTimeout(() => {
+      if (Object.keys(answersRef.current).length > 0) {
+        saveNow();
+      }
+    }, 450);
+
+    const autoSaveInterval = setInterval(saveNow, 12000);
+
+    return () => {
+      clearTimeout(debounceSave);
+      clearInterval(autoSaveInterval);
+    };
   }, [attemptId, answers, isFinished]);
 
   // اختيار إجابة
   const handleSelectOption = (questionId: string, optionId: string) => {
     playCyberClick();
-    setAnswers((prev) => ({
-      ...prev,
-      [questionId]: optionId,
-    }));
+    setAnswers((prev) => {
+      const next = {
+        ...prev,
+        [questionId]: optionId,
+      };
+      answersRef.current = next;
+      return next;
+    });
   };
 
   // تسليم الامتحان
@@ -379,32 +406,46 @@ export default function StudentExamPage({
       return;
     }
 
-    await confirmAndSubmitExam();
+    await confirmAndSubmitExam(true);
   };
 
-  const confirmAndSubmitExam = async () => {
+  const confirmAndSubmitExam = async (isTimeout = false) => {
+    if (forcedSubmitRef.current) return;
+    forcedSubmitRef.current = true;
+
+    const activeAttemptId = attemptIdRef.current || attemptId;
+    if (!activeAttemptId) {
+      forcedSubmitRef.current = false;
+      return;
+    }
+
     setShowSubmitConfirm(false);
     setLoading(true);
     try {
       const res = await fetch("/api/exams/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        keepalive: true,
         body: JSON.stringify({
-          attemptId,
-          answers,
+          attemptId: activeAttemptId,
+          answers: answersRef.current,
+          isTimedOut: isTimeout,
         }),
       });
 
       const data = await res.json();
       if (res.ok) {
         playSuccessChime();
+        if (isTimeout) setTimedOutSubmitted(true);
         setIsFinished(true);
         setResultData(data.review || data);
       } else {
-        alert(data.error || "فشل تسليم الامتحان");
+        forcedSubmitRef.current = false;
+        if (!isTimeout) alert(data.error || "فشل تسليم الامتحان");
       }
     } catch {
-      alert("حدث خطأ أثناء التسليم");
+      forcedSubmitRef.current = false;
+      if (!isTimeout) alert("حدث خطأ أثناء التسليم");
     } finally {
       setLoading(false);
     }
@@ -493,6 +534,17 @@ export default function StudentExamPage({
               </button>
             </div>
           </div>
+
+          {/* تنبيه انتهاء الوقت والتسليم التلقائي لما حله الطالب فقط */}
+          {timedOutSubmitted && !autoSubmittedReason && (
+            <div className="p-4 rounded-2xl bg-amber-950/50 border border-amber-500/40 text-amber-200 text-xs flex items-center gap-3">
+              <Clock className="w-5 h-5 text-amber-400 flex-shrink-0" />
+              <div>
+                <div className="font-bold text-amber-300 mb-0.5">انتهى وقت الامتحان!</div>
+                <div>تم تسليم وتصحيح الأسئلة التي قمت بحلها فقط تلقائياً، واحتساب الأسئلة المتروكة بدون إجابة.</div>
+              </div>
+            </div>
+          )}
 
           {/* تنبيه أمني في حال تم التسليم التلقائي بسبب التصوير أو الخروج من الامتحان */}
           {autoSubmittedReason && (
@@ -853,7 +905,7 @@ export default function StudentExamPage({
               </button>
               <button
                 type="button"
-                onClick={confirmAndSubmitExam}
+                onClick={() => confirmAndSubmitExam(false)}
                 className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold"
               >
                 نعم، تسليم الآن
