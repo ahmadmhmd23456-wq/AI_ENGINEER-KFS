@@ -870,13 +870,49 @@ ${
     : ""
 }
 
-الاستيكرز (ابعت واحد بس لو الجو يضحك أو يشجع فعلاً، وإلا خليه null):
+الاستيكرز (اختياري ونادر — ابعته فقط لو في نكتة جامدة، تشجيع كبير، أو فضفضة محتاجة دعم، وفي 80% من الرسايل خليه null):
 ${stickerMenuText}
 
-الريأكت: إيموجي واحد بسيط على رسالته لو شدت انتباهك (😂، 🔥، ❤️، 💪، 🫂، 🫡)، أو null.
+الريأكت (مهم جداً — ممنوع تعمل ريأكت على كل رسالة!):
+- في التحيات العادية (زي "عامل إيه"، "ازيك"، "أهلاً")، والأسئلة العادية، والكلام العام: خلي "reactToUser": null دايماً.
+- اعمل ريأكت بإيموجي واحد فقط لما الرسالة تستاهل فعلاً: نكتة تضحك (😂)، فضفضة أو ضيق (🫂)، إنجاز حلو (🔥 أو 👏)، أو شكر مؤثر (❤️).
 
 رد بصيغة JSON فقط:
 {"reactToUser":null,"sticker":null,"reply":"ردك القصير الرايق هنا"}`;
+
+  const applySelectiveReactionPolicy = (parsed: ParsedAiReply): ParsedAiReply => {
+    const hasEmotionOrTrigger =
+      Boolean(userStickerDef) ||
+      Boolean(savedSecret) ||
+      /😂|🤣|❤️|🫂|🔥|😭|💔|😢|ههه/.test(userMessage) ||
+      [
+        "نكته",
+        "ضحك",
+        "مخنوق",
+        "تعبان",
+        "مضغوط",
+        "زهقان",
+        "قرفان",
+        "خلصت",
+        "نجحت",
+        "قفلت",
+        "شكرا",
+        "حبيبي",
+        "تسلم",
+        "بحبك",
+        "فرحان",
+        "زعلان",
+      ].some((k) => norm.includes(k));
+
+    if (!hasEmotionOrTrigger) {
+      return {
+        ...parsed,
+        reactToUser: null,
+        sticker: null,
+      };
+    }
+    return parsed;
+  };
 
   // محاولة 1: Gemini API
   if (geminiKey) {
@@ -897,7 +933,7 @@ ${stickerMenuText}
       temperature: 0.85,
     });
     if (g.ok && g.text) {
-      const parsed = parseStructuredAiOutput(g.text);
+      const parsed = applySelectiveReactionPolicy(parseStructuredAiOutput(g.text));
       return { ...parsed, savedSecret, phoneDispatch };
     }
   }
@@ -941,7 +977,7 @@ ${stickerMenuText}
       jsonMode: prov.jsonMode,
     });
     if (r.ok && r.text) {
-      const parsed = parseStructuredAiOutput(r.text);
+      const parsed = applySelectiveReactionPolicy(parseStructuredAiOutput(r.text));
       if (isCleanLlmReply(parsed.reply)) {
         return { ...parsed, savedSecret, phoneDispatch };
       }
@@ -970,7 +1006,7 @@ ${stickerMenuText}
       const data = await res.json();
       const text = data?.choices?.[0]?.message?.content;
       if (text && typeof text === "string" && isCleanLlmReply(text)) {
-        const parsed = parseStructuredAiOutput(text);
+        const parsed = applySelectiveReactionPolicy(parseStructuredAiOutput(text));
         if (isCleanLlmReply(parsed.reply)) {
           return { ...parsed, savedSecret, phoneDispatch };
         }
@@ -1217,8 +1253,8 @@ ${stickerMenuText}
     parts.push(`\nابدأ بأخف واحدة فيهم ولو حسيت إنك كسلت قولي وأنا أشجعك 😄`);
 
     return {
-      reactToUser: "📚",
-      sticker: "coffee_grind",
+      reactToUser: null,
+      sticker: null,
       reply: parts.join("\n"),
     };
   }
@@ -1242,8 +1278,8 @@ ${stickerMenuText}
       reactToUser: "🫂",
       sticker: "hug_support",
       reply: pickRandom([
-        `تعالى هنا يا ${firstName} — كلنا في هندسة بنعدي بأيام دماغنا بتقفل فيها ومش طايقين نبص في ورقة، وده طبيعي جداً مش ضعف منك خالص 🫂\n\nسيبك من جلد الذات دلوقتي؛ احكيلي إيه بالظبط اللي خانقك (مادة معينة، امتحان، ولا موضوع بره الكلية؟) خلينا نفكها سوا واحدة واحدة.`,
-        `حقك تزهق والله يا صاحبي، الضغط مش قليل! خد نفسين وافصل 10 دقايق من غير تأنيب ضمير. لو حابب تفضفضلي في أي حاجة — حتى لو بره الدراسة خالص — أنا سامعك وكلامنا متشفر ومحدش شايفه غيرك 🤍`,
+        `معلش يا ${firstName}، كلنا بنعدي بأيام تقيلة كده.. خد نفس وريح شوية ولو حابب تحكي أنا سامعك 🤍`,
+        `حقك تزهق والله يا صاحبي، افصل شوية من غير تأنيب ضمير وكله هيتحل.`,
       ]),
     };
   }
@@ -1262,18 +1298,13 @@ ${stickerMenuText}
     "ايه الدنيا",
   ].some((k) => norm.includes(k));
   if (isGreeting) {
-    const pendingCount = context.unwatchedLectures.length + context.unfinishedLectures.length;
-    const casualPending =
-      pendingCount > 0 && Math.random() > 0.4
-        ? ` (على جنب كده: في ${pendingCount} محاضرة مستنياك لما تروق 😉)`
-        : "";
     return {
-      reactToUser: "👋",
-      sticker: Math.random() > 0.5 ? "salute" : null,
+      reactToUser: null,
+      sticker: null,
       reply: pickRandom([
-        `أهلاً بيك يا ${firstName}! عامل إيه النهارده؟ احكيلي الدنيا ماشية معاك إزاي${casualPending}`,
-        `منور الدنيا يا هندسة ✨ إيه الأخبار؟ جاي ندردش، نهزر، ولا في مسألة معصلجة عايزين نفكها؟${casualPending}`,
-        `يا هلا بالزميل! كله تمام والحمد لله، إنت اللي طمني عليك عامل إيه؟`,
+        `فل الفل يا ${firstName}، إنت إيه الدنيا معاك؟`,
+        `الحمد لله تمام يا صاحبي، عامل إيه النهارده؟`,
+        `أهلاً يا عم، كله رايق.. طمني عليك؟`,
       ]),
     };
   }
@@ -1288,22 +1319,22 @@ ${stickerMenuText}
 
   if (isQuestion) {
     return {
-      reactToUser: "🧠",
-      sticker: "mind_blown",
+      reactToUser: null,
+      sticker: null,
       reply: pickRandom([
-        `سؤال حلو يا ${firstName}! بص: عشان أديك الإجابة اللي في الجون ومحدش يضحك علينا، اديني تفصيلة زيادة أو اكتبلي المسألة/الموضوع كامل وخلينا نحلله سوا خطوة بخطوة كأننا قاعدين بنذاكر في نفس السكشن 💡`,
-        `حلو الكلام ده! خليني أقولك الخلاصة بسلاسة — وقولي لو عايزنا نتعمق أكتر في جزء معين أو ندخل في التفاصيل الرياضية/العملية بتاعته 👇`,
+        `قولي التفصيلة كاملة يا ${firstName} وخلينا نفصفصها سوا.`,
+        `حلو السؤال ده، وضّحلي تقصد أنهي جزء بالظبط وأنا معاك.`,
       ]),
     };
   }
 
   return {
-    reactToUser: pickRandom(["🔥", "👀", "❤️", "🫡"]),
-    sticker: Math.random() > 0.6 ? pickRandom(["3ash_ya_handasa", "salute", "coffee_grind"]) : null,
+    reactToUser: null,
+    sticker: null,
     reply: pickRandom([
-      `أيوة كده يا ${firstName}، كمّل كلامك ده دماغي شغالة معاك! قولّي رأيك إيه أو ناوي تعمل إيه في الموضوع ده؟`,
-      `فاهمك تمام يا صاحبي 💯 والله الحياة في الكلية دي عايزة اللي ياخدها بذكاء وروقان زيك. إحكيلي أكتر، إيه اللي في دماغك دلوقتي؟`,
-      `كلام موزون والله يا هندسة 👌 تحب نكمّل رغي في الموضوع ده، ولا تسألني في حاجة معينة، ولا نخطط لليوم؟ الشات شاتك!`,
+      `أيوة فاهمك يا ${firstName}، كمل إحكيلي؟`,
+      `تمام يا صاحبي، وبعدين؟`,
+      `معاك يا عم، إيه اللي في دماغك دلوقتي؟`,
     ]),
   };
 }
