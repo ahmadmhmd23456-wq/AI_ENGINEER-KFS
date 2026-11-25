@@ -23,6 +23,8 @@ import {
   ExternalLink,
   Smile,
   Sticker,
+  ImagePlus,
+  X,
 } from "lucide-react";
 import { playCyberClick, playCyberHover, playSuccessChime } from "@/lib/sound";
 import { AI_STICKERS, REACTION_EMOJIS, getStickerById } from "@/lib/ai-stickers";
@@ -33,6 +35,7 @@ interface ChatMessage {
   channel: string;
   content: string;
   sticker?: string | null;
+  imageDataUrl?: string | null;
   aiReaction?: string | null;
   userReaction?: string | null;
   createdAt: string;
@@ -58,6 +61,8 @@ export default function StudentAiCompanionPage() {
   const [sending, setSending] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
   const [activeReactionMsgId, setActiveReactionMsgId] = useState<string | null>(null);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [previewModalImage, setPreviewModalImage] = useState<string | null>(null);
 
   // إضافة سر جديد
   const [secretContent, setSecretContent] = useState("");
@@ -70,6 +75,56 @@ export default function StudentAiCompanionPage() {
   const [phoneToast, setPhoneToast] = useState<string | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const compressImageFile = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("فشل قراءة الصورة"));
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error("صيغة الصورة غير صالحة"));
+        img.onload = () => {
+          const maxDim = 1280;
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width >= height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve(String(reader.result));
+            return;
+          }
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/jpeg", 0.84));
+        };
+        img.src = String(reader.result);
+      };
+      reader.readAsDataURL(file);
+    });
+
+  const handleImageFilePicked = async (file?: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return;
+    try {
+      const compressed = await compressImageFile(file);
+      setPendingImage(compressed);
+      playCyberClick();
+    } catch {
+      // تجاهل
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -99,10 +154,14 @@ export default function StudentAiCompanionPage() {
   const handleSendMessage = async (textOverride?: string, stickerOverride?: string) => {
     const text = (textOverride ?? inputMsg).trim();
     const stickerId = stickerOverride || null;
-    if ((!text && !stickerId) || sending) return;
+    const imageToSend = !textOverride && !stickerId ? pendingImage : null;
+    if ((!text && !stickerId && !imageToSend) || sending) return;
 
     playCyberClick();
-    if (!textOverride && !stickerId) setInputMsg("");
+    if (!textOverride && !stickerId) {
+      setInputMsg("");
+      setPendingImage(null);
+    }
     setShowStickers(false);
     setSending(true);
 
@@ -116,6 +175,7 @@ export default function StudentAiCompanionPage() {
         channel: "WEB",
         content: text,
         sticker: stickerId,
+        imageDataUrl: imageToSend,
         createdAt: new Date().toISOString(),
       },
     ]);
@@ -124,7 +184,12 @@ export default function StudentAiCompanionPage() {
       const res = await fetch("/api/student/ai-companion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "CHAT", message: text, sticker: stickerId }),
+        body: JSON.stringify({
+          action: "CHAT",
+          message: text,
+          sticker: stickerId,
+          imageDataUrl: imageToSend,
+        }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -502,6 +567,21 @@ export default function StudentAiCompanionPage() {
                         </div>
                       )}
 
+                      {msg.imageDataUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewModalImage(msg.imageDataUrl!)}
+                          className="mb-2 block rounded-xl overflow-hidden border border-white/15 hover:opacity-95 transition-opacity"
+                          title="تكبير الصورة"
+                        >
+                          <img
+                            src={msg.imageDataUrl}
+                            alt="صورة سؤال مرفوعة"
+                            className="max-h-56 w-auto object-contain rounded-xl bg-black/20"
+                          />
+                        </button>
+                      )}
+
                       {msg.content && <div>{msg.content}</div>}
 
                       <div className="flex items-center justify-between gap-3 mt-1.5">
@@ -613,7 +693,33 @@ export default function StudentAiCompanionPage() {
               ))}
             </div>
 
-            {/* حقل الإرسال + زر الاستيكرز */}
+            {/* معاينة الصورة المختارة قبل الإرسال */}
+            {pendingImage && (
+              <div className="px-3 py-2 bg-slate-950/90 border-t border-slate-800 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="relative">
+                    <img
+                      src={pendingImage}
+                      alt="معاينة الصورة"
+                      className="h-14 w-14 object-cover rounded-xl border border-cyan-500/40"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setPendingImage(null)}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center shadow"
+                      title="إزالة الصورة"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <div className="text-[11px] text-cyan-300 font-semibold">
+                    📸 صورة السؤال جاهزة للإرسال — اكتب سؤالك أو ابعتها مباشرة!
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* حقل الإرسال + زر الاستيكرز + زر رفع صورة */}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -621,6 +727,29 @@ export default function StudentAiCompanionPage() {
               }}
               className="p-3 bg-slate-950 border-t border-slate-800 flex items-center gap-2"
             >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  handleImageFilePicked(file);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className={`p-2.5 rounded-xl border transition-all ${
+                  pendingImage
+                    ? "bg-cyan-500/20 border-cyan-500/50 text-cyan-300"
+                    : "bg-slate-900 border-slate-800 text-slate-400 hover:text-cyan-300"
+                }`}
+                title="رفع صورة سؤال"
+              >
+                <ImagePlus className="w-4 h-4" />
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -640,12 +769,27 @@ export default function StudentAiCompanionPage() {
                 type="text"
                 value={inputMsg}
                 onChange={(e) => setInputMsg(e.target.value)}
-                placeholder="اكتب رسالة لصاحبك أو ابعت استيكر..."
+                onPaste={(e) => {
+                  const items = e.clipboardData?.items;
+                  if (!items) return;
+                  for (let i = 0; i < items.length; i++) {
+                    if (items[i].type.startsWith("image/")) {
+                      const file = items[i].getAsFile();
+                      if (file) handleImageFilePicked(file);
+                      break;
+                    }
+                  }
+                }}
+                placeholder={
+                  pendingImage
+                    ? "اكتب ملاحظة مع الصورة أو اضغط إرسال..."
+                    : "اكتب رسالة لصاحبك، الصق/ارفع صورة سؤال، أو ابعت استيكر..."
+                }
                 className="flex-1 py-2.5 px-3.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
               />
               <button
                 type="submit"
-                disabled={sending || !inputMsg.trim()}
+                disabled={sending || (!inputMsg.trim() && !pendingImage)}
                 className="p-2.5 px-4 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
               >
                 <Send className="w-4 h-4" />
@@ -942,6 +1086,29 @@ export default function StudentAiCompanionPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* نافذة تكبير الصورة */}
+      {previewModalImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setPreviewModalImage(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setPreviewModalImage(null)}
+            className="absolute top-5 right-5 w-10 h-10 rounded-full bg-slate-900 border border-slate-700 text-white flex items-center justify-center hover:bg-slate-800"
+            title="إغلاق"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <img
+            src={previewModalImage}
+            alt="صورة مكبرة"
+            className="max-w-full max-h-[88vh] rounded-2xl border border-slate-700 shadow-2xl object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
     </div>

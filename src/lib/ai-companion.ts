@@ -7,6 +7,7 @@ import { AI_STICKERS, STICKER_MAP } from "./ai-stickers";
 export interface DecodedChatPayload {
   text: string;
   sticker?: string | null;
+  imageDataUrl?: string | null;
   aiReaction?: string | null;
   userReaction?: string | null;
 }
@@ -18,6 +19,7 @@ export function encodeChatPayload(userId: string, payload: DecodedChatPayload): 
       __v2: true,
       text: payload.text || "",
       sticker: payload.sticker || null,
+      imageDataUrl: payload.imageDataUrl || null,
       aiReaction: payload.aiReaction || null,
       userReaction: payload.userReaction || null,
     })
@@ -32,6 +34,7 @@ export function decodeChatPayload(userId: string, encryptedContent: string): Dec
       return {
         text: typeof parsed.text === "string" ? parsed.text : "",
         sticker: parsed.sticker || null,
+        imageDataUrl: typeof parsed.imageDataUrl === "string" ? parsed.imageDataUrl : null,
         aiReaction: parsed.aiReaction || null,
         userReaction: parsed.userReaction || null,
       };
@@ -757,6 +760,16 @@ export async function getAiLlmConfigSummary() {
   };
 }
 
+type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: string } };
+
+function parseDataUrlImage(dataUrl?: string | null): { mimeType: string; data: string } | null {
+  if (!dataUrl || typeof dataUrl !== "string") return null;
+  const m = dataUrl.match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,([A-Za-z0-9+/=]+)$/i);
+  if (!m) return null;
+  const mimeType = m[1].toLowerCase() === "image/jpg" ? "image/jpeg" : m[1].toLowerCase();
+  return { mimeType, data: m[2] };
+}
+
 async function callOpenAiCompatible(params: {
   endpoint: string;
   apiKey: string;
@@ -764,9 +777,17 @@ async function callOpenAiCompatible(params: {
   systemInstruction: string;
   recentMessages: { role: string; content: string }[];
   userInput: string;
+  imageDataUrl?: string | null;
   jsonMode?: boolean;
 }): Promise<{ ok: boolean; text?: string; error?: string }> {
   try {
+    const userContent = params.imageDataUrl
+      ? [
+          { type: "text", text: params.userInput },
+          { type: "image_url", image_url: { url: params.imageDataUrl } },
+        ]
+      : params.userInput;
+
     const res = await fetch(params.endpoint, {
       method: "POST",
       headers: {
@@ -781,13 +802,13 @@ async function callOpenAiCompatible(params: {
             role: m.role === "ASSISTANT" ? "assistant" : "user",
             content: m.content,
           })),
-          { role: "user", content: params.userInput },
+          { role: "user", content: userContent },
         ],
         temperature: 0.9,
-        max_tokens: 900,
+        max_tokens: 1400,
         ...(params.jsonMode ? { response_format: { type: "json_object" } } : {}),
       }),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(18000),
     });
 
     if (!res.ok) {
@@ -805,7 +826,7 @@ async function callOpenAiCompatible(params: {
 async function callGemini(params: {
   apiKey: string;
   systemInstruction?: string;
-  contents: { role: string; parts: { text: string }[] }[];
+  contents: { role: string; parts: GeminiPart[] }[];
   jsonMode?: boolean;
   maxOutputTokens?: number;
   temperature?: number;
@@ -935,6 +956,7 @@ export async function generateAiCompanionReply(params: {
   userId: string;
   userMessage: string;
   userSticker?: string | null;
+  imageDataUrl?: string | null;
   ipAddress?: string;
   userAgent?: string;
   context: StudentLearningContext;
@@ -948,12 +970,15 @@ export async function generateAiCompanionReply(params: {
   savedNickname?: { id: string; title: string; content: string };
   phoneDispatch?: { sent: boolean; phone: string | null; waDirectUrl: string | null };
 }> {
-  const { userId, userMessage, userSticker, ipAddress, userAgent, context, decryptedSecrets, recentMessages } = params;
+  const { userId, userMessage, userSticker, imageDataUrl, ipAddress, userAgent, context, decryptedSecrets, recentMessages } = params;
   const userStickerDef = userSticker ? STICKER_MAP.get(userSticker) : null;
+  const parsedImage = parseDataUrlImage(imageDataUrl);
   const effectiveUserInput = userMessage.trim()
     ? userStickerDef
       ? `${userMessage.trim()} [بعتلك استيكر: ${userStickerDef.emoji} ${userStickerDef.label}]`
       : userMessage.trim()
+    : parsedImage
+    ? "اشرحلي أو حللي السؤال اللي في الصورة دي بالخطوات الواضحة."
     : userStickerDef
     ? `[الطالب بعتلك استيكر: ${userStickerDef.emoji} "${userStickerDef.label}"]`
     : "";
@@ -1124,6 +1149,7 @@ ${lectureSummaryText}
 ${secretsSummaryText}
 ${savedNickname ? `\n[تم تسجيل اسمه المفضل الجديد "${savedNickname.content}" بنجاح — التزم بيه فقط.]` : ""}
 ${savedSecret ? `\n[تم حفظ كلامه الأخير "${savedSecret.title}" بأمان.]` : ""}
+${parsedImage ? `\n[الطالب بعتلك صورة سؤال واقف معاه: اقرا الكلام/المعادلات/الرسمة اللي في الصورة كويس، ووضحله الفكرة والحل خطوة بخطوة بأسلوبك البسيط القريب بحيث يفهمها بسهولة.]` : ""}
 ${
   phoneDispatch
     ? phoneDispatch.phone
@@ -1215,12 +1241,19 @@ ${stickerMenuText}
 
   // محاولة 1: Gemini API
   if (geminiKey) {
-    const contents = [
+    const userParts: GeminiPart[] = parsedImage
+      ? [
+          { text: effectiveUserInput },
+          { inlineData: { mimeType: parsedImage.mimeType, data: parsedImage.data } },
+        ]
+      : [{ text: effectiveUserInput }];
+
+    const contents: { role: string; parts: GeminiPart[] }[] = [
       ...sanitizedRecentMessages.slice(-10).map((m) => ({
         role: m.role === "ASSISTANT" ? "model" : "user",
         parts: [{ text: m.content }],
       })),
-      { role: "user", parts: [{ text: effectiveUserInput }] },
+      { role: "user", parts: userParts },
     ];
 
     const g = await callGemini({
@@ -1229,7 +1262,7 @@ ${stickerMenuText}
       contents,
       jsonMode: true,
       maxOutputTokens: 2048,
-      temperature: 0.85,
+      temperature: parsedImage ? 0.45 : 0.85,
     });
     if (g.ok && g.text) {
       return await finalizeLlmResult(parseStructuredAiOutput(g.text));
@@ -1238,20 +1271,24 @@ ${stickerMenuText}
 
   // محاولة 2: Groq / OpenRouter / OpenAI عبر الواجهة الموحدة
   const openAiCompatibleProviders = [
-    groqKey
+    !parsedImage && groqKey
       ? {
           endpoint: "https://api.groq.com/openai/v1/chat/completions",
           apiKey: groqKey,
           model: "llama-3.3-70b-versatile",
           jsonMode: true,
+          vision: false,
         }
       : null,
     openRouterKey
       ? {
           endpoint: "https://openrouter.ai/api/v1/chat/completions",
           apiKey: openRouterKey,
-          model: "meta-llama/llama-3.3-70b-instruct:free",
+          model: parsedImage
+            ? "google/gemma-3-27b-it:free"
+            : "meta-llama/llama-3.3-70b-instruct:free",
           jsonMode: false,
+          vision: true,
         }
       : null,
     openAiKey
@@ -1260,9 +1297,16 @@ ${stickerMenuText}
           apiKey: openAiKey,
           model: "gpt-4o-mini",
           jsonMode: true,
+          vision: true,
         }
       : null,
-  ].filter(Boolean) as { endpoint: string; apiKey: string; model: string; jsonMode: boolean }[];
+  ].filter(Boolean) as {
+    endpoint: string;
+    apiKey: string;
+    model: string;
+    jsonMode: boolean;
+    vision: boolean;
+  }[];
 
   for (const prov of openAiCompatibleProviders) {
     const r = await callOpenAiCompatible({
@@ -1272,6 +1316,7 @@ ${stickerMenuText}
       systemInstruction,
       recentMessages: sanitizedRecentMessages,
       userInput: effectiveUserInput,
+      imageDataUrl: prov.vision ? imageDataUrl : null,
       jsonMode: prov.jsonMode,
     });
     if (r.ok && r.text) {
@@ -1280,6 +1325,15 @@ ${stickerMenuText}
         return await finalizeLlmResult(parsed);
       }
     }
+  }
+
+  if (parsedImage) {
+    return {
+      reactToUser: null,
+      sticker: null,
+      reply:
+        "الصورة وصلتني، بس السيرفر مضغوط لحظة ومقدرش يقراها دلوقتي — جرب تبعتها تاني كمان ثواني أو اكتبلي السؤال نفسه وأنا معاك!",
+    };
   }
 
   // محاولة 4: بوابة ذكاء اصطناعي مجانية مفتوحة (إن لم يكن هناك ضغط IP)

@@ -129,6 +129,7 @@ export async function GET() {
           channel: m.channel,
           content: decoded.text,
           sticker: decoded.sticker || null,
+          imageDataUrl: decoded.imageDataUrl || null,
           aiReaction: decoded.aiReaction || null,
           userReaction: decoded.userReaction || null,
           createdAt: m.createdAt,
@@ -165,9 +166,22 @@ export async function POST(req: NextRequest) {
       const messageText = String(body.message || "").trim();
       const rawSticker = typeof body.sticker === "string" ? body.sticker.trim() : "";
       const userSticker = STICKER_MAP.has(rawSticker) ? rawSticker : null;
+      const rawImageDataUrl = typeof body.imageDataUrl === "string" ? body.imageDataUrl.trim() : "";
+      const validImageDataUrl =
+        /^data:image\/(?:jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/i.test(rawImageDataUrl) &&
+        rawImageDataUrl.length <= 2_500_000
+          ? rawImageDataUrl
+          : null;
 
-      if (!messageText && !userSticker) {
-        return NextResponse.json({ error: "اكتب رسالة أو اختر استيكر" }, { status: 400 });
+      if (rawImageDataUrl && !validImageDataUrl) {
+        return NextResponse.json(
+          { error: "صيغة الصورة غير مدعومة أو حجمها كبير جداً" },
+          { status: 400 }
+        );
+      }
+
+      if (!messageText && !userSticker && !validImageDataUrl) {
+        return NextResponse.json({ error: "اكتب رسالة أو ارفع صورة أو اختر استيكر" }, { status: 400 });
       }
 
       const context = await getStudentLearningContext(userId);
@@ -184,6 +198,7 @@ export async function POST(req: NextRequest) {
           encryptedContent: encodeChatPayload(userId, {
             text: messageText,
             sticker: userSticker,
+            imageDataUrl: validImageDataUrl,
           }),
         },
       });
@@ -214,7 +229,13 @@ export async function POST(req: NextRequest) {
           const decoded = decodeChatPayload(userId, m.encryptedContent);
           return {
             role: m.role,
-            content: decoded.text || (decoded.sticker ? `[استيكر: ${decoded.sticker}]` : ""),
+            content:
+              decoded.text ||
+              (decoded.imageDataUrl
+                ? "[أرسل صورة سؤال]"
+                : decoded.sticker
+                ? `[استيكر: ${decoded.sticker}]`
+                : ""),
           };
         });
 
@@ -228,6 +249,7 @@ export async function POST(req: NextRequest) {
         userId,
         userMessage: messageText,
         userSticker,
+        imageDataUrl: validImageDataUrl,
         ipAddress,
         userAgent,
         context,
@@ -242,6 +264,7 @@ export async function POST(req: NextRequest) {
             encryptedContent: encodeChatPayload(userId, {
               text: messageText,
               sticker: userSticker,
+              imageDataUrl: validImageDataUrl,
               aiReaction: result.reactToUser,
             }),
           },
@@ -268,6 +291,7 @@ export async function POST(req: NextRequest) {
           channel: "WEB",
           content: messageText,
           sticker: userSticker,
+          imageDataUrl: validImageDataUrl,
           aiReaction: result.reactToUser || null,
           userReaction: null,
           createdAt: userMsgRecord.createdAt,
