@@ -1,20 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-guard";
 import {
   getAiLlmConfigSummary,
   saveAiLlmConfig,
   testConfiguredAiProvider,
+  getTeachingStyleGuide,
+  saveTeachingStyleGuide,
+  syncPendingLectureDigests,
 } from "@/lib/ai-companion";
 
 export const maxDuration = 60;
+
+async function getLectureSyncStats() {
+  const [analyzedVideosCount, totalYoutubeCount] = await Promise.all([
+    prisma.video.count({
+      where: {
+        aiDigest: { not: null },
+        NOT: { videoId: { startsWith: "demo-" } },
+      },
+    }),
+    prisma.video.count({
+      where: {
+        provider: "YOUTUBE",
+        NOT: { videoId: { startsWith: "demo-" } },
+      },
+    }),
+  ]);
+  return { analyzedVideosCount, totalYoutubeCount };
+}
 
 export async function GET() {
   try {
     const { error } = await requireAdmin();
     if (error) return error;
 
-    const summary = await getAiLlmConfigSummary();
-    return NextResponse.json({ success: true, config: summary });
+    const [summary, teachingStyle, stats] = await Promise.all([
+      getAiLlmConfigSummary(),
+      getTeachingStyleGuide(),
+      getLectureSyncStats(),
+    ]);
+    return NextResponse.json({
+      success: true,
+      config: summary,
+      teachingStyle,
+      ...stats,
+    });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message || "فشل قراءة إعدادات الذكاء الاصطناعي" },
@@ -38,12 +69,38 @@ export async function POST(req: NextRequest) {
         openRouterKey: body.openRouterKey,
         openAiKey: body.openAiKey,
       });
+      if (typeof body.teachingStyle === "string") {
+        await saveTeachingStyleGuide(body.teachingStyle);
+      }
 
-      const summary = await getAiLlmConfigSummary();
+      const [summary, teachingStyle, stats] = await Promise.all([
+        getAiLlmConfigSummary(),
+        getTeachingStyleGuide(),
+        getLectureSyncStats(),
+      ]);
       return NextResponse.json({
         success: true,
         config: summary,
-        message: "تم حفظ مفاتيح الذكاء الاصطناعي وتشفيرها بنجاح ✅",
+        teachingStyle,
+        ...stats,
+        message: "تم حفظ الإعدادات وتشفيرها بنجاح ✅",
+      });
+    }
+
+    if (action === "SYNC_LECTURES") {
+      const result = await syncPendingLectureDigests({
+        limit: 10,
+        force: Boolean(body.force),
+      });
+      const stats = await getLectureSyncStats();
+      return NextResponse.json({
+        success: true,
+        ...result,
+        ...stats,
+        message:
+          result.totalEligible === 0
+            ? `كل المحاضرات (${stats.analyzedVideosCount}/${stats.totalYoutubeCount}) مسموعة ومستوعبة بالفعل 🎧`
+            : `تم سماع واستيعاب ${result.analyzedCount} محاضرة جديدة بنجاح 🎧 (الإجمالي: ${stats.analyzedVideosCount}/${stats.totalYoutubeCount})`,
       });
     }
 

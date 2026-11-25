@@ -760,7 +760,10 @@ export async function getAiLlmConfigSummary() {
   };
 }
 
-type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: string } };
+type GeminiPart =
+  | { text: string }
+  | { inlineData: { mimeType: string; data: string } }
+  | { fileData: { fileUri: string; mimeType: string } };
 
 function parseDataUrlImage(dataUrl?: string | null): { mimeType: string; data: string } | null {
   if (!dataUrl || typeof dataUrl !== "string") return null;
@@ -830,6 +833,7 @@ async function callGemini(params: {
   jsonMode?: boolean;
   maxOutputTokens?: number;
   temperature?: number;
+  timeoutMs?: number;
 }): Promise<{ ok: boolean; model?: string; text?: string; error?: string }> {
   const models = [
     "gemini-flash-lite-latest",
@@ -860,16 +864,20 @@ async function callGemini(params: {
               ...(params.jsonMode ? { responseMimeType: "application/json" } : {}),
             },
           }),
-          signal: AbortSignal.timeout(15000),
+          signal: AbortSignal.timeout(params.timeoutMs ?? 15000),
         }
       );
 
       if (res.ok) {
         const data = await res.json();
         const parts = data?.candidates?.[0]?.content?.parts || [];
-        const replyPart = parts.find((p: any) => !p?.thought && typeof p?.text === "string");
-        if (replyPart?.text) {
-          return { ok: true, model, text: replyPart.text };
+        const combinedText = parts
+          .filter((p: any) => !p?.thought && typeof p?.text === "string")
+          .map((p: any) => p.text)
+          .join("")
+          .trim();
+        if (combinedText) {
+          return { ok: true, model, text: combinedText };
         }
         lastError = `رد فارغ من ${model}`;
       } else {
@@ -950,6 +958,225 @@ export async function testConfiguredAiProvider(): Promise<{
   }
 
   return { ok: false, provider: "NONE", error: "لم يتم حفظ أي مفتاح ذكاء اصطناعي بعد." };
+}
+
+const AI_TEACHING_STYLE_KEY = "AI_TEACHING_STYLE";
+
+export async function getTeachingStyleGuide(): Promise<string> {
+  try {
+    const row = await prisma.platformSetting.findUnique({ where: { key: AI_TEACHING_STYLE_KEY } });
+    return row?.value?.trim() || "";
+  } catch {
+    return "";
+  }
+}
+
+export async function saveTeachingStyleGuide(styleText: string): Promise<void> {
+  const trimmed = (styleText || "").trim();
+  await prisma.platformSetting.upsert({
+    where: { key: AI_TEACHING_STYLE_KEY },
+    update: { value: trimmed },
+    create: { key: AI_TEACHING_STYLE_KEY, value: trimmed },
+  });
+}
+
+export async function analyzeLectureVideo(videoRecordId: string): Promise<{
+  ok: boolean;
+  digest?: string;
+  reason?: string;
+}> {
+  const video = await prisma.video.findUnique({
+    where: { id: videoRecordId },
+    include: {
+      lesson: {
+        include: {
+          subject: true,
+          files: true,
+        },
+      },
+    },
+  });
+
+  if (!video) return { ok: false, reason: "الفيديو غير موجود" };
+  if (video.videoId.startsWith("demo-")) {
+    return { ok: false, reason: "فيديو تجريبي" };
+  }
+
+  const { geminiKey } = await getOptionalAiKeys();
+
+  if (video.provider === "YOUTUBE" && geminiKey) {
+    const ytUrl = `https://www.youtube.com/watch?v=${video.videoId}`;
+    const prompt = `أنت بتسمع وبتشوف محاضرة دراسية بعنوان "${video.title}" من درس "${video.lesson.title}" في مادة "${video.lesson.subject.name}" عشان تتعلم أسلوب شرح المحاضر وتشرح للطلاب بنفس طريقته بالظبط.
+
+اكتب ملخصاً دقيقاً باللغة العربية يحتوي على 4 أجزاء واضحة:
+1. الموضوعات والمفاهيم الأساسية المشروحة في المحاضرة.
+2. القوانين والمعادلات والرموز والوحدات كما استخدمها المحاضر.
+3. أهم الأمثلة أو المسائل التي حلّها المحاضر وخطوات الحل التي اتبعها.
+4. أسلوب وطريقة شرح المحاضر الخاصة (ترتيب العرض، طريقة التبسيط، الجمل المتكررة أو التلميحات الذكية) عشان نقدر نحل أي سؤال بنفس طريقته.`;
+
+    const res = await callGemini({
+      apiKey: geminiKey,
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { fileData: { fileUri: ytUrl, mimeType: "video/*" } },
+            { text: prompt },
+          ],
+        },
+      ],
+      maxOutputTokens: 2048,
+      temperature: 0.3,
+      timeoutMs: 28000,
+    });
+
+    if (res.ok && res.text) {
+      await prisma.video.update({
+        where: { id: video.id },
+        data: {
+          aiDigest: res.text.trim(),
+          aiAnalyzedAt: new Date(),
+        },
+      });
+      return { ok: true, digest: res.text.trim() };
+    }
+    return { ok: false, reason: res.error || "تعذر تحليل فيديو يوتيوب" };
+  }
+
+  // للفيديوهات غير اليوتيوب أو بدون مفتاح Gemini: تجميع سياق الدرس والملفات إن وجد وصف فعلي
+  const contextParts: string[] = [];
+  if (video.lesson.description?.trim()) {
+    contextParts.push(`وصف المحاضرة: ${video.lesson.description.trim()}`);
+  }
+  if (video.lesson.files.length > 0) {
+    contextParts.push(`الملفات المرفقة: ${video.lesson.files.map((f) => f.title).join("، ")}`);
+  }
+  if (contextParts.length > 0) {
+    const fallbackDigest = `مادة ${video.lesson.subject.name} — ${video.lesson.title} (${video.title})\n${contextParts.join("\n")}`;
+    await prisma.video.update({
+      where: { id: video.id },
+      data: {
+        aiDigest: fallbackDigest,
+        aiAnalyzedAt: new Date(),
+      },
+    });
+    return { ok: true, digest: fallbackDigest };
+  }
+
+  return { ok: false, reason: "مزود الفيديو ليس يوتيوب أو مفتاح Gemini غير متوفر" };
+}
+
+export async function syncPendingLectureDigests(options?: {
+  limit?: number;
+  force?: boolean;
+}): Promise<{
+  analyzedCount: number;
+  failedCount: number;
+  totalEligible: number;
+}> {
+  const limit = options?.limit ?? 8;
+  const whereClause: any = {
+    provider: "YOUTUBE",
+    NOT: { videoId: { startsWith: "demo-" } },
+    ...(options?.force ? {} : { aiDigest: null }),
+  };
+
+  const videos = await prisma.video.findMany({
+    where: whereClause,
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    select: { id: true },
+  });
+
+  let analyzedCount = 0;
+  let failedCount = 0;
+  for (const v of videos) {
+    const r = await analyzeLectureVideo(v.id);
+    if (r.ok) analyzedCount++;
+    else failedCount++;
+  }
+
+  return {
+    analyzedCount,
+    failedCount,
+    totalEligible: videos.length,
+  };
+}
+
+async function getStudentCurriculumKnowledge(userId: string): Promise<string> {
+  try {
+    const [purchases, teachingStyle] = await Promise.all([
+      prisma.purchase.findMany({
+        where: { userId, status: "COMPLETED" },
+        select: { subjectId: true },
+      }),
+      getTeachingStyleGuide(),
+    ]);
+
+    const subjectIds = purchases.map((p) => p.subjectId);
+    const sections: string[] = [];
+
+    if (teachingStyle) {
+      sections.push(`توجيهات أسلوب شرح المنهج المعتمدة:\n${teachingStyle}`);
+    }
+
+    if (subjectIds.length > 0) {
+      const [analyzedVideos, explainedQuestions] = await Promise.all([
+        prisma.video.findMany({
+          where: {
+            aiDigest: { not: null },
+            lesson: {
+              subjectId: { in: subjectIds },
+              isPublished: true,
+            },
+          },
+          include: {
+            lesson: {
+              include: { subject: { select: { name: true } } },
+            },
+          },
+          orderBy: { aiAnalyzedAt: "desc" },
+          take: 6,
+        }),
+        prisma.question.findMany({
+          where: {
+            subjectId: { in: subjectIds },
+            explanation: { not: null },
+          },
+          include: {
+            subject: { select: { name: true } },
+          },
+          take: 6,
+        }),
+      ]);
+
+      if (analyzedVideos.length > 0) {
+        const videoBlocks = analyzedVideos.map(
+          (v) =>
+            `• [${v.lesson.subject.name} — ${v.lesson.title} / ${v.title}]:\n${(
+              v.aiDigest || ""
+            ).slice(0, 900)}`
+        );
+        sections.push(`محتوى وأسلوب شرح المحاضرات اللي اتسمعت في مواد الطالب:\n${videoBlocks.join("\n\n")}`);
+      }
+
+      if (explainedQuestions.length > 0) {
+        const qBlocks = explainedQuestions
+          .filter((q) => q.explanation?.trim())
+          .map(
+            (q) =>
+              `• (${q.subject.name}) سؤال: ${q.text.slice(0, 140)} => أسلوب الحل في المنهج: ${q.explanation!.slice(0, 260)}`
+          );
+        if (qBlocks.length > 0) {
+          sections.push(`نماذج من طريقة الحل المعتمدة في بنك أسئلة المنهج:\n${qBlocks.join("\n")}`);
+        }
+      }
+    }
+
+    return sections.join("\n\n");
+  } catch {
+    return "";
+  }
 }
 
 export async function generateAiCompanionReply(params: {
@@ -1076,8 +1303,9 @@ export async function generateAiCompanionReply(params: {
     };
   }
 
-  // 3. تجهيز سياق الدردشة الحرة بمستوى ChatGPT + شخصية الزميل المصري
-  const { geminiKey, openAiKey, groqKey, openRouterKey } = await getOptionalAiKeys();
+  // 3. تجهيز سياق الدردشة الحرة + معرفة المحاضرات التي سمعها وأسلوب شرح المنهج
+  const [{ geminiKey, openAiKey, groqKey, openRouterKey }, curriculumKnowledge] =
+    await Promise.all([getOptionalAiKeys(), getStudentCurriculumKnowledge(userId)]);
 
   const lectureSummaryText = [
     `المواد المشترك بها: ${context.enrolledSubjectsCount}`,
@@ -1144,6 +1372,7 @@ ${identityLine}
 
 معلومات الدراسة (لوقت الحاجة فقط):
 ${lectureSummaryText}
+${curriculumKnowledge ? `\n${curriculumKnowledge}\n\n[مهم عند شرح أي مسألة أو سؤال في المنهج: استخدم نفس طريقة وترتيب وقوانين وأسلوب الشرح المستخرج من محاضرات المنهج فوق.]` : ""}
 
 أسراره اللي حكاهالك (بينا إحنا الاتنين):
 ${secretsSummaryText}

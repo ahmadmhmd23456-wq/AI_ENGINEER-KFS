@@ -35,6 +35,9 @@ export default function AdminDashboardPage() {
   const [groqKey, setGroqKey] = useState("");
   const [openRouterKey, setOpenRouterKey] = useState("");
   const [openAiKey, setOpenAiKey] = useState("");
+  const [teachingStyle, setTeachingStyle] = useState("");
+  const [lectureSyncStats, setLectureSyncStats] = useState({ analyzedVideosCount: 0, totalYoutubeCount: 0 });
+  const [syncingLectures, setSyncingLectures] = useState(false);
   const [savingAi, setSavingAi] = useState(false);
   const [testingAi, setTestingAi] = useState(false);
   const [aiFeedback, setAiFeedback] = useState<{ type: "ok" | "err"; text: string } | null>(null);
@@ -49,6 +52,15 @@ export default function AdminDashboardPage() {
           if (json.config.hasGroqKey) setGroqKey("••••••••••••");
           if (json.config.hasOpenRouterKey) setOpenRouterKey("••••••••••••");
           if (json.config.hasOpenAiKey) setOpenAiKey("••••••••••••");
+        }
+        if (typeof json?.teachingStyle === "string") {
+          setTeachingStyle(json.teachingStyle);
+        }
+        if (json?.analyzedVideosCount !== undefined) {
+          setLectureSyncStats({
+            analyzedVideosCount: json.analyzedVideosCount || 0,
+            totalYoutubeCount: json.totalYoutubeCount || 0,
+          });
         }
       })
       .catch(() => {});
@@ -84,11 +96,16 @@ export default function AdminDashboardPage() {
           groqKey,
           openRouterKey,
           openAiKey,
+          teachingStyle,
         }),
       });
       const json = await res.json();
       if (res.ok) {
         setAiConfig(json.config);
+        setLectureSyncStats({
+          analyzedVideosCount: json.analyzedVideosCount || 0,
+          totalYoutubeCount: json.totalYoutubeCount || 0,
+        });
         setAiFeedback({ type: "ok", text: json.message });
       } else {
         setAiFeedback({ type: "err", text: json.error || "فشل حفظ المفاتيح" });
@@ -97,6 +114,32 @@ export default function AdminDashboardPage() {
       setAiFeedback({ type: "err", text: "تعذر الاتصال بالسيرفر" });
     } finally {
       setSavingAi(false);
+    }
+  };
+
+  const handleSyncLectures = async () => {
+    setSyncingLectures(true);
+    setAiFeedback(null);
+    try {
+      const res = await fetch("/api/admin/ai-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "SYNC_LECTURES" }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setLectureSyncStats({
+          analyzedVideosCount: json.analyzedVideosCount || 0,
+          totalYoutubeCount: json.totalYoutubeCount || 0,
+        });
+        setAiFeedback({ type: "ok", text: json.message });
+      } else {
+        setAiFeedback({ type: "err", text: json.error || "تعذر سماع المحاضرات" });
+      }
+    } catch {
+      setAiFeedback({ type: "err", text: "حدث خطأ أثناء الاتصال" });
+    } finally {
+      setSyncingLectures(false);
     }
   };
 
@@ -523,6 +566,19 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
 
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">
+                  أسلوب شرح المنهج الخاص بالمنصة (اختياري — يُضاف لما يتعلمه تلقائياً من المحاضرات)
+                </label>
+                <textarea
+                  rows={2}
+                  value={teachingStyle}
+                  onChange={(e) => setTeachingStyle(e.target.value)}
+                  placeholder="مثال: نبدأ دايماً برسم الدائرة أو المعطيات على الجنب، ثم كتابة القانون الأصلي، ثم التعويض بالوحدات الدولية..."
+                  className="w-full py-2 px-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
               {aiFeedback && (
                 <div
                   className={`p-3 rounded-xl text-xs whitespace-pre-wrap border ${
@@ -542,7 +598,7 @@ export default function AdminDashboardPage() {
                   className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold flex items-center gap-2"
                 >
                   <Save className="w-4 h-4" />
-                  <span>{savingAi ? "جاري الحفظ..." : "حفظ المفاتيح وتشفيرها"}</span>
+                  <span>{savingAi ? "جاري الحفظ..." : "حفظ الإعدادات وتشفيرها"}</span>
                 </button>
 
                 <button
@@ -553,6 +609,20 @@ export default function AdminDashboardPage() {
                 >
                   <Sparkles className="w-4 h-4" />
                   <span>{testingAi ? "جاري الاختبار..." : "اختبار الذكاء الآن"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSyncLectures}
+                  disabled={syncingLectures}
+                  className="px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-bold flex items-center gap-2"
+                >
+                  <Video className="w-4 h-4" />
+                  <span>
+                    {syncingLectures
+                      ? "جاري سماع المحاضرات..."
+                      : `سماع المحاضرات (${lectureSyncStats.analyzedVideosCount}/${lectureSyncStats.totalYoutubeCount})`}
+                  </span>
                 </button>
               </div>
             </form>

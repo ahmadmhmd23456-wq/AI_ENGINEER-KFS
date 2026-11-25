@@ -166,6 +166,8 @@ model Video {
   videoId          String
   durationSeconds  Int             @default(0)
   thumbnailUrl     String?
+  aiDigest         String?
+  aiAnalyzedAt     DateTime?
   order            Int             @default(0)
   isPreviewFree    Boolean         @default(false)
   progressRecords  VideoProgress[]

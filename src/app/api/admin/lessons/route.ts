@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-guard";
 import { detectVideoProvider, fetchVideoMetadata } from "@/lib/video-helper";
-import { notifyStudentsOfNewLecture } from "@/lib/ai-companion";
+import { notifyStudentsOfNewLecture, analyzeLectureVideo } from "@/lib/ai-companion";
+
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
@@ -60,6 +62,9 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      // سماع واستيعاب محتوى وأسلوب شرح المحاضرة تلقائياً في الخلفية/المهلة
+      const aiAnalysis = await analyzeLectureVideo(video.id).catch(() => null);
+
       // إخطار الطلاب المشتركين عبر الرفيق الذكي والواتساب الخاص بهم عند نشر فيديو/محاضرة جديدة
       if (
         video.lesson.isPublished &&
@@ -73,7 +78,11 @@ export async function POST(req: NextRequest) {
         }).catch(() => {});
       }
 
-      return NextResponse.json({ success: true, video });
+      return NextResponse.json({
+        success: true,
+        video,
+        aiAnalyzed: Boolean(aiAnalysis?.ok),
+      });
     }
 
     // 2.5 تعديل بيانات أو رابط أو مدة فيديو موجود (مع اكتشاف المدة تلقائياً)
@@ -110,7 +119,13 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      return NextResponse.json({ success: true, video: updated });
+      const aiAnalysis = await analyzeLectureVideo(updated.id).catch(() => null);
+
+      return NextResponse.json({
+        success: true,
+        video: updated,
+        aiAnalyzed: Boolean(aiAnalysis?.ok),
+      });
     }
 
     // 3. ربط ملف PDF بحصة معينة (Cloudflare R2 / S3)
