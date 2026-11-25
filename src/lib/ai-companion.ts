@@ -399,6 +399,20 @@ function pickRandom<T>(items: T[]): T {
   return items[Math.floor(Math.random() * items.length)];
 }
 
+export function extractFirstName(fullName?: string | null): string {
+  const cleaned = (fullName || "")
+    .replace(/^(?:م\/|م\.|د\/|د\.|أ\/|أ\.|المهندس|مهندس|باشمهندس)\s*/i, "")
+    .trim();
+  return cleaned.split(/\s+/)[0] || "يا هندسة";
+}
+
+function isCleanLlmReply(text: string): boolean {
+  if (!text || text.trim().length < 2) return false;
+  // منع أي حروف صينية/يابانية/كورية مشوهة قد تصدر أحياناً من بعض النماذج المفتوحة
+  if (/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(text)) return false;
+  return true;
+}
+
 interface ParsedAiReply {
   reply: string;
   reactToUser?: string | null;
@@ -406,9 +420,12 @@ interface ParsedAiReply {
 }
 
 function parseStructuredAiOutput(raw: string): ParsedAiReply {
-  const trimmed = (raw || "").trim();
+  const trimmed = (raw || "")
+    .trim()
+    .replace(/```\s*$/g, "")
+    .trim();
   const jsonMatch =
-    trimmed.match(/^```(?:json)?\s*([\s\S]*?)```$/i)?.[1]?.trim() ||
+    trimmed.match(/^```(?:json)?\s*([\s\S]*?)(?:```|$)/i)?.[1]?.trim() ||
     (trimmed.startsWith("{") && trimmed.endsWith("}") ? trimmed : null);
 
   if (jsonMatch) {
@@ -432,7 +449,7 @@ function parseStructuredAiOutput(raw: string): ParsedAiReply {
     }
   }
 
-  return { reply: trimmed, reactToUser: null, sticker: null };
+  return { reply: trimmed.replace(/^```(?:json)?/i, "").trim(), reactToUser: null, sticker: null };
 }
 
 async function getOptionalAiKeys(): Promise<{
@@ -487,7 +504,7 @@ export async function generateAiCompanionReply(params: {
     : "";
 
   const norm = normalizeArabic(effectiveUserInput);
-  const firstName = context.user.name?.split(" ")[0] || "يا هندسة";
+  const firstName = extractFirstName(context.user.name);
 
   // 1. فحص رغبة الطالب في حفظ سر شخصي داخل الخزنة المشفرة
   const secretTriggers = [
@@ -756,9 +773,11 @@ ${stickerMenuText}
     if (res.ok) {
       const data = await res.json();
       const text = data?.choices?.[0]?.message?.content;
-      if (text && typeof text === "string" && text.trim().length > 2) {
+      if (text && typeof text === "string" && isCleanLlmReply(text)) {
         const parsed = parseStructuredAiOutput(text);
-        return { ...parsed, savedSecret, phoneDispatch };
+        if (isCleanLlmReply(parsed.reply)) {
+          return { ...parsed, savedSecret, phoneDispatch };
+        }
       }
     }
   } catch {

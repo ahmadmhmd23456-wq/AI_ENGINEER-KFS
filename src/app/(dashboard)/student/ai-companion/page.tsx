@@ -684,7 +684,7 @@ export default function StudentAiCompanionPage() {
                 <span>خصوصية تامة</span>
               </div>
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                محادثاتك وملاحظاتك مشفرة تلقائياً بمفتاح خاص بحسابك (`AES-256-GCM`)؛ لا يوجد أي صلاحية لأي شخص آخر أو للأدمن لقراءتها.
+                محادثاتك وملاحظاتك مشفرة تلقائياً بمفتاح خاص بحسابك (AES-256-GCM)؛ لا يوجد أي صلاحية لأي شخص آخر أو للأدمن لقراءتها.
               </p>
             </div>
           </div>

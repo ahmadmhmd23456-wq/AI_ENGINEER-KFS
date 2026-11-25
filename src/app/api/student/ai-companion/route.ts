@@ -9,6 +9,7 @@ import {
   sendPhoneReminderToStudent,
   encodeChatPayload,
   decodeChatPayload,
+  extractFirstName,
 } from "@/lib/ai-companion";
 import { STICKER_MAP } from "@/lib/ai-stickers";
 import { formatDurationArabic } from "@/lib/video-helper";
@@ -44,7 +45,7 @@ export async function GET() {
       context.unwatchedLectures.length + context.unfinishedLectures.length;
 
     if (rawMessages.length === 0) {
-      const firstName = context.user.name?.split(" ")[0] || "يا هندسة";
+      const firstName = extractFirstName(context.user.name);
       let welcome = `أهلاً يا ${firstName} 👋 عامل إيه؟\nأنا زميلك الذكي هنا — احكيلي في أي حاجة تخطر على بالك زي ChatGPT (مذاكرة، برمجة، مسائل، هزار، فضفضة)، وكمان بفكرك لو في محاضرة نزلت أو نسيت تكملها.`;
 
       if (pendingTotal > 0) {
@@ -75,7 +76,7 @@ export async function GET() {
       });
       rawMessages = [createdWelcome];
     } else if (pendingTotal > 0 && hoursSinceLastMsg >= 12) {
-      const firstName = context.user.name?.split(" ")[0] || "يا هندسة";
+      const firstName = extractFirstName(context.user.name);
       const reminderLines = [`👋 إيه يا ${firstName} غبت فين! بقولك، في محاضرات مستنياك على المنصة:`];
       if (context.unwatchedLectures[0]) {
         reminderLines.push(
