@@ -48,16 +48,16 @@ export async function GET() {
 
     if (rawMessages.length === 0) {
       const firstName = extractFirstName(context.user.name);
-      let welcome = `أهلاً يا ${firstName} 👋 عامل إيه النهارده؟ ارغي معايا في أي حاجة تيجي في بالك، سواء مذاكرة، فضفضة، أو حتى هزار.`;
+      let welcome = `أهلاً يا ${firstName} 👋 إيه الدنيا؟`;
 
       if (pendingTotal > 0) {
         const firstUnwatched = context.unwatchedLectures[0];
         const firstUnfinished = context.unfinishedLectures[0];
         if (firstUnwatched) {
-          welcome += `\n\nوعلى السريع كده، نزلتلك محاضرة "${firstUnwatched.lessonTitle}" في ${firstUnwatched.subjectName} لما تبقى فاضي تسمعها.`;
+          welcome += ` على فكرة نزلت محاضرة "${firstUnwatched.lessonTitle}" في ${firstUnwatched.subjectName} لما تبقى فاضي.`;
         } else if (firstUnfinished) {
           const min = Math.max(1, Math.floor(firstUnfinished.lastPositionSeconds / 60));
-          welcome += `\n\nوبالمناسبة، لسه مكمّلتش "${firstUnfinished.videoTitle}" في ${firstUnfinished.subjectName} (وقفت عند الدقيقة ${min}).`;
+          welcome += ` لسه باقيلك تكمل "${firstUnfinished.videoTitle}" (دقيقة ${min}).`;
         }
       }
 
