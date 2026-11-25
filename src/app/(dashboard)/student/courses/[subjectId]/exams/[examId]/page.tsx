@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, use } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import {
   Clock,
   AlertTriangle,
@@ -21,6 +22,9 @@ import {
   Check,
   X,
   Filter,
+  Lock,
+  ShieldCheck,
+  EyeOff,
 } from "lucide-react";
 import {
   playCyberClick,
@@ -36,6 +40,7 @@ export default function StudentExamPage({
   params: Promise<{ subjectId: string; examId: string }>;
 }) {
   const router = useRouter();
+  const { data: session } = useSession();
   const resolvedParams = use(params);
   const { subjectId, examId } = resolvedParams;
 
@@ -52,10 +57,17 @@ export default function StudentExamPage({
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [serverDueTime, setServerDueTime] = useState<Date | null>(null);
 
-  // مكافحة الغش (Anti-Cheat)
+  // مكافحة الغش ومنع التصوير (Anti-Cheat & Anti-Screenshot)
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
   const [cheatWarning, setCheatWarning] = useState(false);
+  const [isScreenProtected, setIsScreenProtected] = useState(false);
+  const [protectionReason, setProtectionReason] = useState<string>("");
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
+
+  const answersRef = useRef<Record<string, string>>({});
+  answersRef.current = answers;
+  const lastViolationAtRef = useRef<number>(0);
 
   // النتيجة النهائية
   const [isFinished, setIsFinished] = useState(false);
@@ -129,44 +141,140 @@ export default function StudentExamPage({
     return () => clearInterval(interval);
   }, [serverDueTime, isFinished]);
 
-  // 3. مراقبة محاولات الغش (تبديل التبويب + منع النسخ واللصق)
+  // 3. منظومة حماية الامتحان الشاملة (منع لقطة الشاشة، التعتيم الفوري، منع النسخ والطباعة وأدوات المطور)
   useEffect(() => {
     if (isFinished || !attemptId) return;
 
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
+    const triggerProtectionShield = (reason: string, recordViolation = true) => {
+      setIsScreenProtected(true);
+      setProtectionReason(reason);
+      setCheatWarning(true);
+
+      const now = Date.now();
+      if (recordViolation && now - lastViolationAtRef.current > 2000) {
+        lastViolationAtRef.current = now;
         playTargetLock();
         setTabSwitchCount((prev) => prev + 1);
-        setCheatWarning(true);
-        // إبلاغ السيرفر بحدوث تبديل للتبويب فوراً
         fetch("/api/exams/save", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             attemptId,
-            answers,
+            answers: answersRef.current,
             tabSwitched: true,
           }),
         }).catch(() => {});
       }
     };
 
+    const clearClipboardSafely = () => {
+      try {
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+          navigator.clipboard
+            .writeText("غير مسموح بأخذ لقطة شاشة للامتحان - منصة هندسة التعليمية")
+            .catch(() => {});
+        }
+      } catch {
+        // تجاهل في حال عدم توفر إذن الحافظة
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        triggerProtectionShield("تم إخفاء الأسئلة عند مغادرة تبويب الامتحان أو فتح أداة خارجية");
+      }
+    };
+
+    const handleWindowBlur = () => {
+      // التعتيم الفوري بمجرد فقدان التركيز (مثل فتح أداة القص Win+Shift+S أو التبديل لتطبيق آخر)
+      triggerProtectionShield("تم تعتيم الشاشة لحماية الامتحان عند فقدان التركيز أو فتح أداة تصوير");
+    };
+
+    const handleKeyDownOrUp = (e: KeyboardEvent) => {
+      const key = (e.key || "").toLowerCase();
+      const code = e.code || "";
+      const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+
+      // 1. زر PrintScreen في أنظمة Windows/Linux
+      if (key === "printscreen" || code === "PrintScreen" || e.keyCode === 44) {
+        e.preventDefault();
+        e.stopPropagation();
+        clearClipboardSafely();
+        triggerProtectionShield("محاولة أخذ لقطة شاشة (PrintScreen) محظورة أثناء الامتحان");
+        return;
+      }
+
+      // 2. اختصار أداة القص في ويندوز Win+Shift+S أو macOS Cmd+Shift+3/4/5
+      if (
+        (e.metaKey && e.shiftKey && (key === "s" || key === "3" || key === "4" || key === "5")) ||
+        (e.ctrlKey && e.shiftKey && key === "s")
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        clearClipboardSafely();
+        triggerProtectionShield("تم رصد اختصار لقطة الشاشة وتعتيم الأسئلة فوراً");
+        return;
+      }
+
+      // 3. منع الطباعة (Ctrl+P / Cmd+P) وحفظ الصفحة (Ctrl+S) وعرض المصدر (Ctrl+U) والنسخ والقص
+      if (isCtrlOrMeta && ["p", "s", "u", "c", "x", "a"].includes(key)) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (key === "p") {
+          triggerProtectionShield("الطباعة أو الحفظ بصيغة PDF محظور أثناء الامتحان");
+        }
+        return;
+      }
+
+      // 4. منع أدوات المطورين (F12, Ctrl+Shift+I/J/C)
+      if (
+        key === "f12" ||
+        (isCtrlOrMeta && e.shiftKey && ["i", "j", "c", "k"].includes(key))
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        triggerProtectionShield("فتح أدوات الفحص محظور أثناء الامتحان");
+      }
+    };
+
+    const handleBeforePrint = (e: Event) => {
+      e.preventDefault?.();
+      triggerProtectionShield("محاولة طباعة أو حفظ الامتحان محظورة");
+    };
+
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
-    const handleCopy = (e: ClipboardEvent) => e.preventDefault();
+    const handleCopy = (e: ClipboardEvent) => {
+      e.preventDefault();
+      e.clipboardData?.setData("text/plain", "النسخ محظور أثناء الامتحان");
+    };
+    const handleCut = (e: ClipboardEvent) => e.preventDefault();
     const handlePaste = (e: ClipboardEvent) => e.preventDefault();
+    const handleDragStart = (e: DragEvent) => e.preventDefault();
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("keydown", handleKeyDownOrUp, true);
+    window.addEventListener("keyup", handleKeyDownOrUp, true);
+    window.addEventListener("beforeprint", handleBeforePrint);
     window.addEventListener("contextmenu", handleContextMenu);
     window.addEventListener("copy", handleCopy);
+    window.addEventListener("cut", handleCut);
     window.addEventListener("paste", handlePaste);
+    window.addEventListener("dragstart", handleDragStart);
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("keydown", handleKeyDownOrUp, true);
+      window.removeEventListener("keyup", handleKeyDownOrUp, true);
+      window.removeEventListener("beforeprint", handleBeforePrint);
       window.removeEventListener("contextmenu", handleContextMenu);
       window.removeEventListener("copy", handleCopy);
+      window.removeEventListener("cut", handleCut);
       window.removeEventListener("paste", handlePaste);
+      window.removeEventListener("dragstart", handleDragStart);
     };
-  }, [attemptId, isFinished, answers]);
+  }, [attemptId, isFinished]);
 
   // 4. الحفظ التلقائي الدوري كل 12 ثانية
   useEffect(() => {
@@ -201,10 +309,16 @@ export default function StudentExamPage({
 
   // تسليم الامتحان
   const handleSubmitExam = async (isForcedTimeout = false) => {
-    if (!isForcedTimeout && !confirm("هل أنت متأكد من تسليم الامتحان الآن؟ لا يمكن التراجع بعد التسليم.")) {
+    if (!isForcedTimeout) {
+      setShowSubmitConfirm(true);
       return;
     }
 
+    await confirmAndSubmitExam();
+  };
+
+  const confirmAndSubmitExam = async () => {
+    setShowSubmitConfirm(false);
     setLoading(true);
     try {
       const res = await fetch("/api/exams/submit", {
@@ -590,12 +704,102 @@ export default function StudentExamPage({
 
   const currentQuestion = assignedQuestions[currentIndex];
   const answeredCount = Object.keys(answers).length;
+  const studentName = session?.user?.name || "طالب هندسة";
+  const studentPhone = (session?.user as any)?.phone || "01000000000";
 
   return (
     <div
-      className="min-h-screen bg-[#070b14] text-white flex flex-col justify-between select-none no-select"
+      style={{
+        WebkitUserSelect: "none",
+        userSelect: "none",
+        WebkitTouchCallout: "none",
+      }}
+      onContextMenu={(e) => e.preventDefault()}
+      onCopy={(e) => e.preventDefault()}
+      onCut={(e) => e.preventDefault()}
+      onDragStart={(e) => e.preventDefault()}
+      className="min-h-screen bg-[#070b14] text-white flex flex-col justify-between select-none no-select relative"
       dir="rtl"
     >
+      {/* حجب الطباعة والحفظ بصيغة PDF أثناء الامتحان */}
+      <style>{`
+        @media print {
+          body * {
+            display: none !important;
+            visibility: hidden !important;
+          }
+          body::after {
+            content: "غير مسموح بطباعة أو تصوير ورقة الامتحان - منصة هندسة التعليمية";
+            display: block !important;
+            visibility: visible !important;
+            color: #000;
+            font-size: 20px;
+            text-align: center;
+            padding: 60px 20px;
+          }
+        }
+      `}</style>
+
+      {/* ستار الحماية الفوري عند محاولة التصوير أو فقدان التركيز */}
+      {isScreenProtected && (
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-slate-900 border border-red-500/40 rounded-3xl p-6 sm:p-8 text-center shadow-2xl space-y-4">
+            <div className="w-16 h-16 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto">
+              <EyeOff className="w-8 h-8" />
+            </div>
+            <h2 className="text-lg font-bold text-white">تم إخفاء ورقة الامتحان أمنياً</h2>
+            <p className="text-xs text-red-300 leading-relaxed bg-red-950/40 border border-red-500/20 rounded-2xl p-3">
+              {protectionReason || "يُمنع أخذ لقطة شاشة (Screenshot) أو مغادرة نافذة الامتحان."}
+            </p>
+            <div className="text-[11px] text-slate-400">
+              محاولات الخروج/التصوير المسجلة: <span className="font-mono font-bold text-amber-400">{tabSwitchCount}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                playCyberClick();
+                setIsScreenProtected(false);
+              }}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-600/25"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>العودة للامتحان واستئناف الحل</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* مودال تأكيد تسليم الامتحان داخل الصفحة (لمنع تفعيل حماية فقدان التركيز) */}
+      {showSubmitConfirm && (
+        <div className="fixed inset-0 z-[90] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="max-w-sm w-full bg-slate-900 border border-slate-700 rounded-3xl p-6 text-center shadow-2xl space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mx-auto">
+              <Send className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-white">تأكيد تسليم الامتحان</h3>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              قمت بالإجابة عن <span className="font-bold text-emerald-400">{answeredCount}</span> من أصل{" "}
+              <span className="font-bold text-white">{assignedQuestions.length}</span> سؤال. هل أنت متأكد من التسليم الآن؟
+            </p>
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowSubmitConfirm(false)}
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold"
+              >
+                العودة للمراجعة
+              </button>
+              <button
+                type="button"
+                onClick={confirmAndSubmitExam}
+                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold"
+              >
+                نعم، تسليم الآن
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* الشريط العلوي للامتحان: المؤقت السيرفري + حالة الحفظ ومكافحة الغش */}
       <header className="bg-slate-900/90 border-b border-slate-800 px-4 sm:px-6 py-3.5 flex items-center justify-between sticky top-0 z-40 backdrop-blur-md">
         <div className="flex items-center gap-3">
@@ -655,32 +859,56 @@ export default function StudentExamPage({
         </div>
       )}
 
-      {/* منطقة ورقة الأسئلة */}
-      <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 my-auto">
+      {/* منطقة ورقة الأسئلة (مع التعتيم التلقائي وشبكة العلامات المائية لحماية الأسئلة) */}
+      <main
+        className={`flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 my-auto transition-all duration-150 ${
+          isScreenProtected ? "opacity-0 blur-2xl pointer-events-none" : ""
+        }`}
+      >
         {currentQuestion && (
-          <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative">
-            {/* رقم السؤال والدرجة */}
-            <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800">
-              <span className="px-3 py-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-full text-xs font-bold">
-                السؤال {currentIndex + 1}
-              </span>
+          <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
+            {/* شبكة العلامات المائية المائلة عبر كامل ورقة الامتحان بهوية الطالب */}
+            <div className="absolute inset-0 pointer-events-none z-20 flex flex-wrap items-center justify-around gap-8 opacity-[0.12] p-6 overflow-hidden select-none">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="transform -rotate-12 text-xs sm:text-sm font-bold font-mono text-slate-200 select-none text-center"
+                >
+                  <div>{studentName}</div>
+                  <div dir="ltr">{studentPhone}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* شريط تنبيه الحماية العلوي المصغر */}
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800 relative z-10">
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-full text-xs font-bold">
+                  السؤال {currentIndex + 1}
+                </span>
+                <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-500/10 text-red-300 border border-red-500/20 text-[10px] font-semibold">
+                  <Lock className="w-3 h-3" />
+                  <span>محمي ضد التصوير</span>
+                </span>
+              </div>
               <span className="text-xs font-mono text-slate-400">
                 الدرجة: {currentQuestion.points}
               </span>
             </div>
 
             {/* نص السؤال */}
-            <div className="text-base sm:text-lg font-bold text-white leading-relaxed mb-6">
+            <div className="text-base sm:text-lg font-bold text-white leading-relaxed mb-6 relative z-10">
               <LatexRenderer content={currentQuestion.text} />
             </div>
 
             {/* صورة السؤال إن وجدت */}
             {currentQuestion.imageUrl && (
-              <div className="mb-6 rounded-2xl overflow-hidden border border-slate-800 max-h-80 flex items-center justify-center bg-black/40">
+              <div className="mb-6 rounded-2xl overflow-hidden border border-slate-800 max-h-80 flex items-center justify-center bg-black/40 relative z-10">
                 <img
                   src={currentQuestion.imageUrl}
                   alt="صورة السؤال"
-                  className="max-h-80 object-contain"
+                  draggable={false}
+                  className="max-h-80 object-contain pointer-events-none select-none"
                 />
               </div>
             )}
