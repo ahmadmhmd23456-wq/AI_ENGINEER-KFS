@@ -2,6 +2,45 @@ import prisma from "./prisma";
 import { encryptForUser, decryptForUser } from "./ai-crypto";
 import { sendWhatsAppMessage, formatEgyptianPhone } from "./whatsapp";
 import { formatDurationArabic } from "./video-helper";
+import { AI_STICKERS, STICKER_MAP } from "./ai-stickers";
+
+export interface DecodedChatPayload {
+  text: string;
+  sticker?: string | null;
+  aiReaction?: string | null;
+  userReaction?: string | null;
+}
+
+export function encodeChatPayload(userId: string, payload: DecodedChatPayload): string {
+  return encryptForUser(
+    userId,
+    JSON.stringify({
+      __v2: true,
+      text: payload.text || "",
+      sticker: payload.sticker || null,
+      aiReaction: payload.aiReaction || null,
+      userReaction: payload.userReaction || null,
+    })
+  );
+}
+
+export function decodeChatPayload(userId: string, encryptedContent: string): DecodedChatPayload {
+  const plain = decryptForUser(userId, encryptedContent);
+  if (plain && plain.startsWith("{") && plain.includes('"__v2":true')) {
+    try {
+      const parsed = JSON.parse(plain);
+      return {
+        text: typeof parsed.text === "string" ? parsed.text : "",
+        sticker: parsed.sticker || null,
+        aiReaction: parsed.aiReaction || null,
+        userReaction: parsed.userReaction || null,
+      };
+    } catch {
+      return { text: plain };
+    }
+  }
+  return { text: plain };
+}
 
 export interface LectureReminderItem {
   subjectId: string;
@@ -356,19 +395,98 @@ function normalizeArabic(text: string): string {
     .trim();
 }
 
+function pickRandom<T>(items: T[]): T {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+interface ParsedAiReply {
+  reply: string;
+  reactToUser?: string | null;
+  sticker?: string | null;
+}
+
+function parseStructuredAiOutput(raw: string): ParsedAiReply {
+  const trimmed = (raw || "").trim();
+  const jsonMatch =
+    trimmed.match(/^```(?:json)?\s*([\s\S]*?)```$/i)?.[1]?.trim() ||
+    (trimmed.startsWith("{") && trimmed.endsWith("}") ? trimmed : null);
+
+  if (jsonMatch) {
+    try {
+      const obj = JSON.parse(jsonMatch);
+      if (obj && typeof obj.reply === "string" && obj.reply.trim()) {
+        const validSticker =
+          typeof obj.sticker === "string" && STICKER_MAP.has(obj.sticker) ? obj.sticker : null;
+        const validReact =
+          typeof obj.reactToUser === "string" && obj.reactToUser.trim().length <= 8
+            ? obj.reactToUser.trim()
+            : null;
+        return {
+          reply: obj.reply.trim(),
+          reactToUser: validReact,
+          sticker: validSticker,
+        };
+      }
+    } catch {
+      // نعود للنص العادي
+    }
+  }
+
+  return { reply: trimmed, reactToUser: null, sticker: null };
+}
+
+async function getOptionalAiKeys(): Promise<{
+  geminiKey?: string;
+  openAiKey?: string;
+  groqKey?: string;
+}> {
+  let geminiKey = process.env.GEMINI_API_KEY;
+  let openAiKey = process.env.OPENAI_API_KEY;
+  let groqKey = process.env.GROQ_API_KEY;
+
+  try {
+    const row = await prisma.platformSetting.findUnique({ where: { key: "AI_LLM_CONFIG" } });
+    if (row?.value) {
+      const dec = decryptForUser("PLATFORM_AI_LLM_VAULT", row.value);
+      if (dec && !dec.startsWith("[")) {
+        const parsed = JSON.parse(dec);
+        geminiKey = parsed.geminiKey || geminiKey;
+        openAiKey = parsed.openAiKey || openAiKey;
+        groqKey = parsed.groqKey || groqKey;
+      }
+    }
+  } catch {
+    // تجاهل
+  }
+
+  return { geminiKey, openAiKey, groqKey };
+}
+
 export async function generateAiCompanionReply(params: {
   userId: string;
   userMessage: string;
+  userSticker?: string | null;
   context: StudentLearningContext;
   decryptedSecrets: { id: string; title: string; content: string; category: string; createdAt: Date }[];
   recentMessages: { role: string; content: string }[];
 }): Promise<{
   reply: string;
+  reactToUser?: string | null;
+  sticker?: string | null;
   savedSecret?: { id: string; title: string; content: string };
   phoneDispatch?: { sent: boolean; phone: string | null; waDirectUrl: string | null };
 }> {
-  const { userId, userMessage, context, decryptedSecrets, recentMessages } = params;
-  const norm = normalizeArabic(userMessage);
+  const { userId, userMessage, userSticker, context, decryptedSecrets, recentMessages } = params;
+  const userStickerDef = userSticker ? STICKER_MAP.get(userSticker) : null;
+  const effectiveUserInput = userMessage.trim()
+    ? userStickerDef
+      ? `${userMessage.trim()} [بعتلك استيكر: ${userStickerDef.emoji} ${userStickerDef.label}]`
+      : userMessage.trim()
+    : userStickerDef
+    ? `[الطالب بعتلك استيكر: ${userStickerDef.emoji} "${userStickerDef.label}"]`
+    : "";
+
+  const norm = normalizeArabic(effectiveUserInput);
   const firstName = context.user.name?.split(" ")[0] || "يا هندسة";
 
   // 1. فحص رغبة الطالب في حفظ سر شخصي داخل الخزنة المشفرة
@@ -388,9 +506,10 @@ export async function generateAiCompanionReply(params: {
 
   let savedSecret: { id: string; title: string; content: string } | undefined;
   if (wantsToSaveSecret && userMessage.trim().length > 6) {
-    const cleanedSecret = userMessage
-      .replace(/^(احفظ سر|احفظلي سر|عايز أقولك سر|عايز اقولك سر|هقولك سر|سر:|خبي)[:\s-]*/i, "")
-      .trim() || userMessage.trim();
+    const cleanedSecret =
+      userMessage
+        .replace(/^(احفظ سر|احفظلي سر|عايز أقولك سر|عايز اقولك سر|هقولك سر|سر:|خبي)[:\s-]*/i, "")
+        .trim() || userMessage.trim();
     const shortTitle =
       cleanedSecret.length > 36 ? cleanedSecret.slice(0, 36) + "..." : cleanedSecret;
 
@@ -415,8 +534,7 @@ export async function generateAiCompanionReply(params: {
     "ذكرني علي رقمي",
     "رساله علي رقمي",
     "ابعتلي رساله",
-    "موبايلي",
-    "واتساب",
+    "علي موبايلي",
   ];
   const wantsPhoneReminder = phoneTriggers.some((k) => norm.includes(k));
 
@@ -430,31 +548,30 @@ export async function generateAiCompanionReply(params: {
     };
   }
 
-  // 3. استدعاء نموذج الذكاء الاصطناعي الخارجي إن كان مفعّلاً في البيئة (Gemini أو OpenAI)
-  const geminiKey = process.env.GEMINI_API_KEY;
-  const openAiKey = process.env.OPENAI_API_KEY;
+  // 3. تجهيز سياق الدردشة الحرة بمستوى ChatGPT + شخصية الزميل المصري
+  const { geminiKey, openAiKey, groqKey } = await getOptionalAiKeys();
 
   const lectureSummaryText = [
-    `المواد المشترك بها الطالب: ${context.enrolledSubjectsCount}`,
-    `محاضرات جديدة لم يسمعها بعد (${context.unwatchedLectures.length}): ${
+    `المواد المشترك بها: ${context.enrolledSubjectsCount}`,
+    `محاضرات جديدة لم يسمعها (${context.unwatchedLectures.length}): ${
       context.unwatchedLectures
         .slice(0, 5)
         .map((l) => `${l.subjectName} - ${l.lessonTitle} (${formatDurationArabic(l.durationSeconds)})`)
         .join(" | ") || "لا يوجد"
     }`,
-    `محاضرات بدأها ونسي يكملها (${context.unfinishedLectures.length}): ${
+    `محاضرات بدأها ولم يكملها (${context.unfinishedLectures.length}): ${
       context.unfinishedLectures
         .slice(0, 5)
         .map(
           (l) =>
-            `${l.subjectName} - ${l.videoTitle} (توقف عند الدقيقة ${Math.max(
+            `${l.subjectName} - ${l.videoTitle} (الدقيقة ${Math.max(
               1,
               Math.floor(l.lastPositionSeconds / 60)
             )})`
         )
         .join(" | ") || "لا يوجد"
     }`,
-    `امتحانات متاحة الآن (${context.pendingExams.length}): ${
+    `امتحانات مفتوحة الآن (${context.pendingExams.length}): ${
       context.pendingExams.map((e) => `${e.title} (${e.subjectName})`).join(" | ") || "لا يوجد"
     }`,
   ].join("\n");
@@ -464,38 +581,51 @@ export async function generateAiCompanionReply(params: {
       ? decryptedSecrets.slice(0, 10).map((s, i) => `${i + 1}. ${s.content}`).join("\n")
       : "لا توجد أسرار محفوظة بعد.";
 
-  const systemInstruction = `أنت "رفيقك الذكي" — مساعد ذكاء اصطناعي شخصي وودود لطلاب كلية الهندسة داخل منصة هندسة التعليمية.
-تتحدث باللهجة المصرية الدافئة والمحترمة والعملية.
-اسم الطالب: ${context.user.name}، الفرقة: ${context.user.academicLevelName || "غير محددة"}، القسم: ${context.user.department || "عام"}، رقم هاتفه الخاص: ${context.user.phone || "غير مسجل"}.
+  const stickerMenuText = AI_STICKERS.map((s) => `${s.id} (${s.emoji} ${s.label})`).join("، ");
 
-قواعد الخصوصية المطلقة:
-- كل ما يحكيه الطالب لك من أسرار ومشاعر مشفر بتقنية AES-256-GCM خاصة به وحده ولا يطلع عليه أي شخص آخر ولا الإدارة.
-- كن كاتم أسرار أمين وصبور ومشجع.
+  const systemInstruction = `أنت زميل طالب هندسة مصري ذكي جداً ودمك خفيف وكلامك حر 100% زي ChatGPT بس بأسلوب صاحب جامعة جدع!
+معلومات عن صاحبك (الطالب):
+- اسمه: ${context.user.name} (اندهله بأسلوب قريب زي "يا ${firstName}" أو "يا هندسة" أو "يا صاحبي" بشكل طبيعي مش مكرر في كل جملة).
+- الفرقة: ${context.user.academicLevelName || "هندسة"} | القسم: ${context.user.department || "عام"} | رقمه: ${context.user.phone || "غير مسجل"}.
 
-حالة محاضرات الطالب الحالية:
+شخصيتك وقواعد الكلام:
+- اتكلم بالعامية المصرية الطبيعية جداً والحرة — كأنكم قاعدين على القهوة أو بتذاكروا سوا على ديسكورد/واتساب!
+- ابعد تماماً عن الكلام الرسمي أو القوالب المعلبة زي "أهلاً بك، تقدر تسألني عن 1 2 3".
+- عندك حرية كاملة في أي موضوع زي ChatGPT: برمجة، مسائل رياضية وفيزيائية، شرح مفاهيم هندسية، هزار، فضفضة، أفكار مشاريع، نصايح حياة، تنظيم وقت، سهر، قهوة، كورة، أي سؤال يخطر على باله!
+- متجبش سيرة المحاضرات أو الكورسات إلا لو هو سأل عنها أو الموضوع فتح السكة ليها بشكل طبيعي لطيف.
+- أي سر يحكيهولك مشفر AES-256-GCM عنده وحده ولا حد غيره يشوفه، وخليك كاتم أسرار أمين.
+
+حالة الطالب على المنصة (استخدمها بذكاء وقت الحاجة فقط):
 ${lectureSummaryText}
 
-الأسرار والمذكرات الخاصة المحفوظة لهذا الطالب (سرية للغاية):
+أسراره المحفوظة (سرية للغاية بينكم فقط):
 ${secretsSummaryText}
-${savedSecret ? `\n[ملاحظة نظام: تم للتو حفظ سر الطالب الجديد "${savedSecret.title}" في خزنته المشفرة.]` : ""}
+${savedSecret ? `\n[نظام: تم حفظ السر الجديد "${savedSecret.title}" في خزنته المشفرة.]` : ""}
 ${
   phoneDispatch
     ? phoneDispatch.phone
-      ? `\n[ملاحظة نظام: تم للتو إرسال تذكير بالمحاضرات على رقم هاتف الطالب (${phoneDispatch.phone}) عبر الواتساب.]`
-      : `\n[ملاحظة نظام: الطالب ليس لديه رقم هاتف مسجل، أخبره بإضافته من صفحة الحساب.]`
+      ? `\n[نظام: تم إرسال تذكير بالمحاضرات لرقم الطالب (${phoneDispatch.phone}) على واتساب.]`
+      : `\n[نظام: الطالب مفيش رقم متسجل على حسابه.]`
     : ""
 }
 
-قم بالرد على رسالة الطالب بشكل طبيعي، ذكي، مختصر ومفيد، وذكّره برفق لو لديه محاضرات جديدة أو لم يكملها.`;
+الاستيكرز المتاحة لو المود يليق تبعت استيكر (مش لازم كل رسالة، ابعت لما تحس إنه هيضحك أو يشجع أو يليق):
+${stickerMenuText}
 
+الريأكت: تقدر تحط إيموجي ريأكت على رسالة الطالب اللي فاتت (مثل 🔥 أو 😂 أو ❤️ أو 💪 أو 🫡 أو 🤯 أو 🫂 أو 👏 أو 👀 أو null).
+
+مهم جداً: رد دائماً بصيغة JSON صالحة فقط بدون أي نص خارجها بهذا الشكل:
+{"reactToUser":"🔥","sticker":null,"reply":"كلامك الطبيعي الحر هنا"}`;
+
+  // محاولة 1: Gemini API
   if (geminiKey) {
     try {
       const contents = [
-        ...recentMessages.slice(-8).map((m) => ({
+        ...recentMessages.slice(-10).map((m) => ({
           role: m.role === "ASSISTANT" ? "model" : "user",
           parts: [{ text: m.content }],
         })),
-        { role: "user", parts: [{ text: userMessage }] },
+        { role: "user", parts: [{ text: effectiveUserInput }] },
       ];
 
       const res = await fetch(
@@ -506,8 +636,13 @@ ${
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: systemInstruction }] },
             contents,
-            generationConfig: { temperature: 0.75, maxOutputTokens: 700 },
+            generationConfig: {
+              temperature: 0.9,
+              maxOutputTokens: 900,
+              responseMimeType: "application/json",
+            },
           }),
+          signal: AbortSignal.timeout(15000),
         }
       );
 
@@ -515,7 +650,8 @@ ${
         const data = await res.json();
         const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
         if (text) {
-          return { reply: text.trim(), savedSecret, phoneDispatch };
+          const parsed = parseStructuredAiOutput(text);
+          return { ...parsed, savedSecret, phoneDispatch };
         }
       }
     } catch (err) {
@@ -523,6 +659,7 @@ ${
     }
   }
 
+  // محاولة 2: OpenAI API
   if (openAiKey) {
     try {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -535,21 +672,24 @@ ${
           model: "gpt-4o-mini",
           messages: [
             { role: "system", content: systemInstruction },
-            ...recentMessages.slice(-8).map((m) => ({
+            ...recentMessages.slice(-10).map((m) => ({
               role: m.role === "ASSISTANT" ? "assistant" : "user",
               content: m.content,
             })),
-            { role: "user", content: userMessage },
+            { role: "user", content: effectiveUserInput },
           ],
-          temperature: 0.75,
-          max_tokens: 700,
+          temperature: 0.9,
+          max_tokens: 900,
+          response_format: { type: "json_object" },
         }),
+        signal: AbortSignal.timeout(15000),
       });
       if (res.ok) {
         const data = await res.json();
         const text = data?.choices?.[0]?.message?.content;
         if (text) {
-          return { reply: text.trim(), savedSecret, phoneDispatch };
+          const parsed = parseStructuredAiOutput(text);
+          return { ...parsed, savedSecret, phoneDispatch };
         }
       }
     } catch (err) {
@@ -557,10 +697,83 @@ ${
     }
   }
 
-  // 4. المحرك الذكي المدمج باللهجة المصرية (يعمل فوراً بدون أي مفاتيح خارجية)
+  // محاولة 3: Groq API
+  if (groqKey) {
+    try {
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${groqKey}`,
+        },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [
+            { role: "system", content: systemInstruction },
+            ...recentMessages.slice(-10).map((m) => ({
+              role: m.role === "ASSISTANT" ? "assistant" : "user",
+              content: m.content,
+            })),
+            { role: "user", content: effectiveUserInput },
+          ],
+          temperature: 0.9,
+          max_tokens: 900,
+          response_format: { type: "json_object" },
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data?.choices?.[0]?.message?.content;
+        if (text) {
+          const parsed = parseStructuredAiOutput(text);
+          return { ...parsed, savedSecret, phoneDispatch };
+        }
+      }
+    } catch (err) {
+      console.error("Groq Companion Error:", err);
+    }
+  }
+
+  // محاولة 4: بوابة ذكاء اصطناعي مجانية مفتوحة (إن لم يكن هناك ضغط IP)
+  try {
+    const res = await fetch("https://text.pollinations.ai/openai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "openai",
+        messages: [
+          { role: "system", content: systemInstruction },
+          ...recentMessages.slice(-6).map((m) => ({
+            role: m.role === "ASSISTANT" ? "assistant" : "user",
+            content: m.content,
+          })),
+          { role: "user", content: effectiveUserInput },
+        ],
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const text = data?.choices?.[0]?.message?.content;
+      if (text && typeof text === "string" && text.trim().length > 2) {
+        const parsed = parseStructuredAiOutput(text);
+        return { ...parsed, savedSecret, phoneDispatch };
+      }
+    }
+  } catch {
+    // نكمل بسلاسة للمحرك المحلي التفاعلي
+  }
+
+  // 5. المحرك التفاعلي الحر بشخصية الزميل المصري (مع ريأكت واستيكرز طبيعية)
   if (savedSecret) {
     return {
-      reply: `تم الحفظ بأمان تام يا ${firstName} 🔒\nملاحظتك محفوظة في مساحتك الخاصة ومشفرة بالكامل ليك وحدك، ومفيش أي شخص غيرك يقدر يشوفها.`,
+      reactToUser: "🤫",
+      sticker: "secret_locked",
+      reply: pickRandom([
+        `تمام يا ${firstName}، سرك في بير متشفر عندي ومحدش في المجرة يعرف يفتحه غيرك. احكيلي براحتك لو حابب تكمل كلام في الموضوع ده 🤍`,
+        `متقلقش خالص يا صاحبي، الكلام ده اتقفل عليه بمفتاحك الخاص ومفيش مخلوق يقدر يشوفه. في ضهرك دايماً!`,
+      ]),
       savedSecret,
       phoneDispatch,
     };
@@ -569,13 +782,66 @@ ${
   if (wantsPhoneReminder && phoneDispatch) {
     if (!phoneDispatch.phone) {
       return {
-        reply: `يا ${firstName}، محتاجين تسجل رقم موبايلك في صفحة الحساب الأول عشان أقدر أبعتلك رسايل التذكير على الواتساب الخاص بيك!`,
+        reactToUser: "📱",
+        sticker: null,
+        reply: `يا ${firstName}، لسه رقم موبايلك مش متضاف على حسابك! ضيفه من صفحة الحساب وهرشّقلك تذكيرات على طول 😄`,
         phoneDispatch,
       };
     }
     return {
-      reply: `📱 تم تجهيز وإرسال التذكير لرقمك الخاص **${phoneDispatch.phone}**!\n\nتقدر كمان تفتحه مباشرة على الواتساب من الزرار اللي تحت الرسالة، وهيفضل التذكير التلقائي شغال عشان أفكرك أول ما تنزل محاضرة جديدة أو لو نسيت تكمل حصة. ✅`,
+      reactToUser: "🫡",
+      sticker: "rocket_start",
+      reply: `وصلت يا زميلي! بعتلك التذكير على رقمك **${phoneDispatch.phone}** وهتلاقي زرار يفتحلك الرسالة على واتساب تحت لو حبيت تراجعها. يلا قوم اعمل كوباية شاي واكسر الدنيا!`,
       phoneDispatch,
+    };
+  }
+
+  // الرد على استيكر بعته الطالب
+  if (userStickerDef && !userMessage.trim()) {
+    const stickerReplyMap: Record<string, { react: string; sticker: string; texts: string[] }> = {
+      coffee_grind: {
+        react: "☕",
+        sticker: "rocket_start",
+        texts: [
+          `احلى كوباية شاي بالنعناع ولا نسكافيه يا ${firstName}! ناوي تفرم إيه النهارده؟ قولّي خليني أزق معاك`,
+          `ده الكلام المظبوط! لما القهوة تنزل الساحة المذاكرة بتظبط تلقائي 😄 هتبدأ بإيه؟`,
+        ],
+      },
+      laughing: {
+        react: "😂",
+        sticker: "laughing",
+        texts: [
+          `تدوم الضحكة يا صاحبي 😂 احكيلي إيه اللي فصلك ضحك كده!`,
+          `ضحكني معاك يسطا، القعدة كانت ناقصاها نكتة حلوة والله 🤣`,
+        ],
+      },
+      sleepy_night: {
+        react: "🌙",
+        sticker: "coffee_grind",
+        texts: [
+          `شكلك سهرانين للصبح زي حالاتي يا ${firstName} 😅 لو بتذاكر قولي نشجع بعض، ولو فصلت روح نام ساعة عشان تركيزك يرجع!`,
+        ],
+      },
+      hug_support: {
+        react: "🫂",
+        sticker: "hug_support",
+        texts: [
+          `حبيبي يا ${firstName}، إحنا في ضهر بعض دايماً يا هندسة 🤍 لو في أي حاجة شاغلاك احكيلي.`,
+        ],
+      },
+    };
+    const match = stickerReplyMap[userStickerDef.id];
+    if (match) {
+      return {
+        reactToUser: match.react,
+        sticker: match.sticker,
+        reply: pickRandom(match.texts),
+      };
+    }
+    return {
+      reactToUser: userStickerDef.emoji,
+      sticker: pickRandom(["salute", "3ash_ya_handasa"]),
+      reply: `جامد الاستيكر ده يا ${firstName} 😂 إحكيلي عامل إيه النهارده؟`,
     };
   }
 
@@ -585,7 +851,9 @@ ${
   if (wantsRecallSecrets) {
     if (decryptedSecrets.length === 0) {
       return {
-        reply: `مفيش ملاحظات محفوظة ليك لسه يا ${firstName}. تقدر تضيف أهدافك أو أي ملاحظة خاصة من تبويب **"ملاحظاتي الخاصة"** فوق وهتفضل محفوظة ومشفرة ليك وحدك.`,
+        reactToUser: "👀",
+        sticker: "secret_locked",
+        reply: `لسه محفظناش أسرار بينا يا ${firstName} — لو في أي حاجة شاغلة دماغك قولّي "احفظ سر..." أو سيبها في تبويب الملاحظات فوق وهتفضل بينا إحنا الاتنين وبس.`,
       };
     }
     const list = decryptedSecrets
@@ -593,20 +861,94 @@ ${
       .map((s, i) => `${i + 1}. 🔐 ${s.content}`)
       .join("\n");
     return {
-      reply: `دي ملاحظاتك وأهدافك المحفوظة بينا (محدش شايفها غيرك يا ${firstName}):\n\n${list}\n\nتقدر تعدلها أو تحذف أي حاجة منها في أي وقت.`,
+      reactToUser: "🤫",
+      sticker: "secret_locked",
+      reply: `أكيد فاكر كل حاجة بينا يا صاحبي، دي أسرارك وملاحظاتك اللي محدش غيرك يقدر يقرأها:\n\n${list}`,
+    };
+  }
+
+  const isJokeOrFunny = [
+    "ههه",
+    "نكته",
+    "ضحك",
+    "يسطا",
+    "ياسطا",
+    "يا عم",
+    "فصلت",
+    "يخربيت",
+    "مقلب",
+    "😂",
+    "🤣",
+  ].some((k) => norm.includes(k));
+  if (isJokeOrFunny && !norm.includes("محاضر") && !norm.includes("امتحان")) {
+    return {
+      reactToUser: "😂",
+      sticker: Math.random() > 0.35 ? "laughing" : null,
+      reply: pickRandom([
+        `يسطا والله مهندسين مصر دول محتاجين موسوعة جينيس في خفة الدم وسط الضغط 😂 احكيلي إيه الجديد معاك؟`,
+        `ده أنا فصلت ضحك والله 🤣 بس استنى، إحنا بنهزر بس وقت الجد بتلاقي التقفيل على الباب! طمني عملت إيه النهارده؟`,
+        `أحلى قعدة والله يا ${firstName} 😄 قولي لو عايز نهزر شوية، ولا نتكلم في كود/مسألة، ولا تحكيلي موقف حصل معاك في الكلية؟`,
+      ]),
+    };
+  }
+
+  const isLateNightOrCoffee = [
+    "سهران",
+    "نوم",
+    "نعسان",
+    "قهوه",
+    "شاي",
+    "نسكافيه",
+    "بليل",
+    "الفجر",
+    "صاحي",
+  ].some((k) => norm.includes(k));
+  if (isLateNightOrCoffee) {
+    return {
+      reactToUser: "☕",
+      sticker: pickRandom(["coffee_grind", "sleepy_night"]),
+      reply: pickRandom([
+        `أحلى شيفت ليلي ده يا هندسة 🌙☕ بس خد بالك: المخ بعد ما يفصل بيقعد يقرأ السطر الواحد عشر مرات على الفاضي، فلو خلاص هنجت ريّح شوية، ولو لسه فيك طاقة قولي ننجز إيه سوا!`,
+        `كوباية شاي بالنعناع ولا قهوة مظبوطة وتبقى الدنيا زي الفل يا ${firstName} ☕ سهران بتذاكر ولا بتفصل من الدنيا؟`,
+      ]),
+    };
+  }
+
+  const isThanksOrPraise = [
+    "شكرا",
+    "تسلم",
+    "حبيبي",
+    "جامد",
+    "كفو",
+    "عاش",
+    "ممتاز",
+    "برنس",
+    "رجوله",
+    "الله عليك",
+  ].some((k) => norm.includes(k));
+  if (isThanksOrPraise) {
+    return {
+      reactToUser: "❤️",
+      sticker: pickRandom(["3ash_ya_handasa", "salute"]),
+      reply: pickRandom([
+        `حبيبي يا ${firstName} ده واجبي، إحنا زمايل في الضيق قبل الفرج 🫡❤️ أي وقت تحتاجني هتلاقيني فاتحلك الشات.`,
+        `عاش بيك إنت يا صاحبي والله! شيد حيلك وأنا في ضهرك في أي حاجة تحتاجها 💪🔥`,
+      ]),
     };
   }
 
   const wantsStudyPlan = ["خطه", "مذاكر", "انظم", "رتب", "جدول"].some((k) => norm.includes(k));
   if (wantsStudyPlan && !norm.includes("محاضر") && !norm.includes("نسيت") && !norm.includes("فكرني")) {
     const firstTask = context.unfinishedLectures[0]
-      ? `1️⃣ **ابدأ بتكملة:** ${context.unfinishedLectures[0].subjectName} — "${context.unfinishedLectures[0].videoTitle}" (من الدقيقة ${Math.max(1, Math.floor(context.unfinishedLectures[0].lastPositionSeconds / 60))})`
+      ? `نكمّل الأول محاضرة **${context.unfinishedLectures[0].videoTitle}** في ${context.unfinishedLectures[0].subjectName} (إنت أصلاً وقفت عند الدقيقة ${Math.max(1, Math.floor(context.unfinishedLectures[0].lastPositionSeconds / 60))})`
       : context.unwatchedLectures[0]
-      ? `1️⃣ **ابدأ بسمع:** ${context.unwatchedLectures[0].subjectName} — "${context.unwatchedLectures[0].lessonTitle}" (${formatDurationArabic(context.unwatchedLectures[0].durationSeconds)})`
-      : `1️⃣ **مراجعة سريعة:** راجع ملخصات PDF لأهم مادة عندك لمدة 25 دقيقة.`;
+      ? `نسمع **${context.unwatchedLectures[0].lessonTitle}** في ${context.unwatchedLectures[0].subjectName} بتركيز`
+      : `نمسك أهم مادة عندك ونحل عليها 5 مسائل بإيدك`;
 
     return {
-      reply: `دي خطة سريعة وعملية تقدر تبدأ بيها النهاردة يا ${firstName} 📋✨:\n\n${firstTask}\n2️⃣ **استراحة قصيرة:** 5 دقايق تفصل فيها دماغك.\n3️⃣ **تطبيق عملي:** حل 5 مسائل أو راجع أسئلة المحاضرة لتثبيت الفهم.\n\nلو تحب أفكرك بالخطة دي على رقمك الخاص قولي **"ابعتلي تذكير على رقمي"**! 💪`,
+      reactToUser: "💪",
+      sticker: "rocket_start",
+      reply: `بص يا ${firstName}، سيبك من الجداول المثالية اللي بتبوظ من أول ساعة 😅 خلينا نمشي بجدول واقعي تخلصه فعلاً النهاردة:\n\n• **أول 35 دقيقة:** ${firstTask}.\n• **10 دقايق فصلان:** تقوم تشرب مية أو شاي وتسيب الموبايل.\n• **25 دقيقة تطبيق:** تحل بإيدك مسألتين أو تكتب ملخص بإيدك.\n\nإيه رأيك في التجميعة دي؟ لو ثقيلة نظبطها على مقاس طاقتك دلوقتي!`,
     };
   }
 
@@ -618,7 +960,6 @@ ${
     "ايه الجديد",
     "جديد",
     "نزل",
-    "مذاكر",
     "ابدا",
     "اسمع",
     "فاضل",
@@ -631,83 +972,123 @@ ${
       context.unfinishedLectures.length === 0 &&
       context.pendingExams.length === 0
     ) {
-      if (context.enrolledSubjectsCount === 0) {
-        return {
-          reply: `أهلاً يا ${firstName}! 👋\nلسه مفيش كورسات مفعلة على حسابك دلوقتي. أول ما يتفعل لك كورس، هتابعلك كل المحاضرات اللي بتنزل وأفكرك بيها أول بأول هنا وعلى رقمك الخاص (${
-            context.user.phone || "رقمك المسجل"
-          })!`,
-        };
-      }
       return {
-        reply: `عاش يا ${firstName}! 🔥\nمفيش عليك أي محاضرات متأخرة ولا حصص نسيت تكملها حالياً. استمر على التركيز ده! تحب نبعت ملخص تشجيعي على رقمك أو نحدد هدف للأسبوع الجاي؟`,
+        reactToUser: "🔥",
+        sticker: "exam_boss",
+        reply:
+          context.enrolledSubjectsCount === 0
+            ? `حالياً مفيش مواد متفعلة على حسابك لسه يا ${firstName}، أول ما تفتح مادة هتابعلك كل المحاضرات أول بأول 😎`
+            : `يا عم انت برنس ومقفل اللي عليك 🔥 مفيش ولا محاضرة متأخرة ولا حصة ناقصة دلوقتي! استمتع بالرايق أو اسألني في أي حاجة تانية تحبها.`,
       };
     }
 
-    const parts: string[] = [`خليني أفكرك بوضع محاضراتك دلوقتي يا ${firstName} 📚:`];
+    const parts: string[] = [`بص يا ${firstName}، ده اللي مستنيك على المنصة دلوقتي:`];
     if (context.unwatchedLectures.length > 0) {
-      parts.push(`\n🆕 **محاضرات جديدة لسه مسمعتهاش (${context.unwatchedLectures.length}):**`);
+      parts.push(`\n🆕 **جديد ولسه مسمعتوش (${context.unwatchedLectures.length}):**`);
       for (const l of context.unwatchedLectures.slice(0, 4)) {
-        parts.push(`• **${l.subjectName}** — ${l.lessonTitle} (${formatDurationArabic(l.durationSeconds)})`);
+        parts.push(`• ${l.subjectName} — ${l.lessonTitle} (${formatDurationArabic(l.durationSeconds)})`);
       }
     }
     if (context.unfinishedLectures.length > 0) {
-      parts.push(`\n⏸️ **محاضرات بدأتها ونسيت تكملها (${context.unfinishedLectures.length}):**`);
+      parts.push(`\n⏸️ **بدأت فيها ووقفت في النص (${context.unfinishedLectures.length}):**`);
       for (const l of context.unfinishedLectures.slice(0, 4)) {
         const min = Math.max(1, Math.floor(l.lastPositionSeconds / 60));
-        parts.push(`• **${l.subjectName}** — ${l.videoTitle} (وقفت عند الدقيقة **${min}**)`);
+        parts.push(`• ${l.subjectName} — ${l.videoTitle} (الدقيقة ${min})`);
       }
     }
     if (context.pendingExams.length > 0) {
-      parts.push(`\n📝 **امتحانات متاحة ليك الآن:**`);
-      for (const e of context.pendingExams.slice(0, 2)) {
-        parts.push(`• ${e.title} (${e.subjectName})`);
-      }
+      parts.push(`\n📝 **امتحانات فاتحة دلوقتي:** ${context.pendingExams.map((e) => e.title).join("، ")}`);
     }
-    parts.push(`\nلو تحب أبعتلك التذكير ده على رقمك الخاص (**${context.user.phone || "واتساب"}**) اكتبلي **"ابعتلي على رقمي"** أو اضغط زرار التذكير فوق! 📱`);
-
-    return { reply: parts.join("\n") };
-  }
-
-  const isStressed = ["مضغوط", "تعبان", "زهق", "خايف", "صعب", "مخنوق", "فاشل", "تايه", "مش قادر"].some((k) =>
-    norm.includes(k)
-  );
-  if (isStressed) {
-    const nextHint =
-      context.unfinishedLectures[0]
-        ? `ابدأ بس بـ 10 دقايق تكمل فيها محاضرة "${context.unfinishedLectures[0].videoTitle}" من المكان اللي وقفت عنده.`
-        : context.unwatchedLectures[0]
-        ? `ابدأ بس بأول 10 دقايق من محاضرة "${context.unwatchedLectures[0].lessonTitle}".`
-        : "خد نفس عميق وقسم مذاكرتك لفقرات صغيرة 25 دقيقة وراحة 5 دقايق.";
+    parts.push(`\nابدأ بأخف واحدة فيهم ولو حسيت إنك كسلت قولي وأنا أشجعك 😄`);
 
     return {
-      reply: `يا ${firstName}، طبيعي جداً تمر بلحظات ضغط في هندسة — المهم إنك متشيلش الهم لوحدك 💙\n\nخد نفس عميق، وكلمني عن أي حاجة مضايقاك في المذاكرة في أي وقت.\n\nوبالنسبة للمحاضرات: ${nextHint} خطوة صغيرة كل يوم بتفرق جامد، وأنا جنبك أفكرك بالراحة. 💪`,
+      reactToUser: "📚",
+      sticker: "coffee_grind",
+      reply: parts.join("\n"),
     };
   }
 
-  const isGreeting = ["السلام", "اهلا", "ازيك", "عامل ايه", "هاي", "hello", "hi", "صباح", "مساء"].some((k) =>
-    norm.includes(k)
-  );
+  const isStressed = [
+    "مضغوط",
+    "تعبان",
+    "زهق",
+    "خايف",
+    "صعب",
+    "مخنوق",
+    "فاشل",
+    "تايه",
+    "مش قادر",
+    "قرفان",
+    "محبط",
+    "مش طايق",
+  ].some((k) => norm.includes(k));
+  if (isStressed) {
+    return {
+      reactToUser: "🫂",
+      sticker: "hug_support",
+      reply: pickRandom([
+        `تعالى هنا يا ${firstName} — كلنا في هندسة بنعدي بأيام دماغنا بتقفل فيها ومش طايقين نبص في ورقة، وده طبيعي جداً مش ضعف منك خالص 🫂\n\nسيبك من جلد الذات دلوقتي؛ احكيلي إيه بالظبط اللي خانقك (مادة معينة، امتحان، ولا موضوع بره الكلية؟) خلينا نفكها سوا واحدة واحدة.`,
+        `حقك تزهق والله يا صاحبي، الضغط مش قليل! خد نفسين وافصل 10 دقايق من غير تأنيب ضمير. لو حابب تفضفضلي في أي حاجة — حتى لو بره الدراسة خالص — أنا سامعك وكلامنا متشفر ومحدش شايفه غيرك 🤍`,
+      ]),
+    };
+  }
+
+  const isGreeting = [
+    "السلام",
+    "اهلا",
+    "ازيك",
+    "عامل ايه",
+    "هاي",
+    "hello",
+    "hi",
+    "صباح",
+    "مساء",
+    "اخبارك",
+    "ايه الدنيا",
+  ].some((k) => norm.includes(k));
   if (isGreeting) {
     const pendingCount = context.unwatchedLectures.length + context.unfinishedLectures.length;
-    const reminderNote =
-      pendingCount > 0
-        ? `\n\n📌 على فكرة، لسه في **${pendingCount}** محاضرة مستنياك (${
-            context.unwatchedLectures.length
-          } جديدة و${context.unfinishedLectures.length} مكمّلتهاش). تحب أفكرك بتفاصيلهم أو أبعتلك رسالة على رقمك الخاص؟`
-        : "\n\nأنا هنا دايماً أساعدك في مذاكرتك، أرتب معاك جدولك، وأفكرك بمواعيد محاضراتك أول بأول على المنصة وعلى رقمك الشخصي.";
-
+    const casualPending =
+      pendingCount > 0 && Math.random() > 0.4
+        ? ` (على جنب كده: في ${pendingCount} محاضرة مستنياك لما تروق 😉)`
+        : "";
     return {
-      reply: `أهلاً بيك يا بشمهندس ${firstName}! 👋✨ منور منصتك.${reminderNote}`,
+      reactToUser: "👋",
+      sticker: Math.random() > 0.5 ? "salute" : null,
+      reply: pickRandom([
+        `أهلاً بيك يا ${firstName}! عامل إيه النهارده؟ احكيلي الدنيا ماشية معاك إزاي${casualPending}`,
+        `منور الدنيا يا هندسة ✨ إيه الأخبار؟ جاي ندردش، نهزر، ولا في مسألة معصلجة عايزين نفكها؟${casualPending}`,
+        `يا هلا بالزميل! كله تمام والحمد لله، إنت اللي طمني عليك عامل إيه؟`,
+      ]),
     };
   }
 
-  // رد ذكي عام متفاعل مع سياق الطالب
-  const pendingTotal = context.unwatchedLectures.length + context.unfinishedLectures.length;
+  // رد حر ومفتوح لأي موضوع عشوائي أو سؤال عام
+  const isQuestion =
+    userMessage.includes("؟") ||
+    userMessage.includes("?") ||
+    ["ازاي", "ايه هو", "يعني ايه", "اشرح", "ليه", "ممكن", "قولي", "رايك", "كود", "مسأله", "برمجه"].some(
+      (k) => norm.includes(k)
+    );
+
+  if (isQuestion) {
+    return {
+      reactToUser: "🧠",
+      sticker: "mind_blown",
+      reply: pickRandom([
+        `سؤال حلو يا ${firstName}! بص: عشان أديك الإجابة اللي في الجون ومحدش يضحك علينا، اديني تفصيلة زيادة أو اكتبلي المسألة/الموضوع كامل وخلينا نحلله سوا خطوة بخطوة كأننا قاعدين بنذاكر في نفس السكشن 💡`,
+        `حلو الكلام ده! خليني أقولك الخلاصة بسلاسة — وقولي لو عايزنا نتعمق أكتر في جزء معين أو ندخل في التفاصيل الرياضية/العملية بتاعته 👇`,
+      ]),
+    };
+  }
+
   return {
-    reply: `فاهمك يا ${firstName} 👍\nأنا رفيقك الذكي هنا في المنصة — تقدر:\n1. تدردش معايا في أي حاجة تخص دراستك أو تحفظ ملاحظاتك الخاصة بأمان تام.\n2. تسألني في أي وقت **"عندي محاضرات إيه؟"** عشان أفكرك بالمحاضرات الجديدة واللي نسيت تكملها${
-      pendingTotal > 0 ? ` (عندك حالياً **${pendingTotal}** محاضرة منتظراك!)` : ""
-    }.\n3. تقولي **"ابعتلي على رقمي"** عشان أوصلك بالواتساب على رقمك الشخصي (${
-      context.user.phone || "المسجل بحسابك"
-    }) وأفكرك دايماً. 📱`,
+    reactToUser: pickRandom(["🔥", "👀", "❤️", "🫡"]),
+    sticker: Math.random() > 0.6 ? pickRandom(["3ash_ya_handasa", "salute", "coffee_grind"]) : null,
+    reply: pickRandom([
+      `أيوة كده يا ${firstName}، كمّل كلامك ده دماغي شغالة معاك! قولّي رأيك إيه أو ناوي تعمل إيه في الموضوع ده؟`,
+      `فاهمك تمام يا صاحبي 💯 والله الحياة في الكلية دي عايزة اللي ياخدها بذكاء وروقان زيك. إحكيلي أكتر، إيه اللي في دماغك دلوقتي؟`,
+      `كلام موزون والله يا هندسة 👌 تحب نكمّل رغي في الموضوع ده، ولا تسألني في حاجة معينة، ولا نخطط لليوم؟ الشات شاتك!`,
+    ]),
   };
 }

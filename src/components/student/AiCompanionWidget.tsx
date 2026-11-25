@@ -3,8 +3,9 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, Lock, X, Send, Sparkles, Bell, Phone, ArrowLeft } from "lucide-react";
+import { Bot, Lock, X, Send, Sparkles, Bell, ArrowLeft } from "lucide-react";
 import { playCyberClick } from "@/lib/sound";
+import { getStickerById } from "@/lib/ai-stickers";
 
 export default function AiCompanionWidget() {
   const pathname = usePathname();
@@ -14,6 +15,8 @@ export default function AiCompanionWidget() {
   const [unfinished, setUnfinished] = useState<any[]>([]);
   const [quickMsg, setQuickMsg] = useState("");
   const [quickReply, setQuickReply] = useState<string | null>(null);
+  const [quickSticker, setQuickSticker] = useState<string | null>(null);
+  const [quickAiReaction, setQuickAiReaction] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
   const isOnAiPage = pathname === "/student/ai-companion";
@@ -49,6 +52,8 @@ export default function AiCompanionWidget() {
       const data = await res.json();
       if (res.ok && data.assistantMessage?.content) {
         setQuickReply(data.assistantMessage.content);
+        setQuickSticker(data.assistantMessage.sticker || null);
+        setQuickAiReaction(data.userMessage?.aiReaction || null);
         setQuickMsg("");
       }
     } catch {
@@ -106,12 +111,30 @@ export default function AiCompanionWidget() {
             )}
 
             {quickReply ? (
-              <div className="p-3 rounded-2xl bg-slate-800/80 border border-slate-700 text-slate-100 whitespace-pre-wrap leading-relaxed">
-                {quickReply}
+              <div className="space-y-2">
+                {quickAiReaction && (
+                  <div className="text-[11px] text-slate-400">
+                    ريأكت زميلك على رسالتك: <span className="text-sm">{quickAiReaction}</span>
+                  </div>
+                )}
+                {(() => {
+                  const st = getStickerById(quickSticker);
+                  return st ? (
+                    <div
+                      className={`p-2.5 rounded-2xl bg-gradient-to-br ${st.gradient} border ${st.border} flex items-center gap-2`}
+                    >
+                      <span className="text-2xl">{st.emoji}</span>
+                      <span className={`text-[11px] font-bold ${st.textClass}`}>{st.label}</span>
+                    </div>
+                  ) : null;
+                })()}
+                <div className="p-3 rounded-2xl bg-slate-800/80 border border-slate-700 text-slate-100 whitespace-pre-wrap leading-relaxed">
+                  {quickReply}
+                </div>
               </div>
             ) : (
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                اسألني عن محاضراتك، رتب مذاكرتك، أو اطلب أبعتلك تذكير على رقمك الخاص.
+                احكي معايا في أي حاجة زي صاحبك أو ChatGPT، هزر، اسأل في الدراسة، أو افتح الشات الكامل للاستيكرز والريأكت.
               </p>
             )}
           </div>
@@ -125,7 +148,7 @@ export default function AiCompanionWidget() {
                 type="text"
                 value={quickMsg}
                 onChange={(e) => setQuickMsg(e.target.value)}
-                placeholder="اكتب لرفيقك الذكي..."
+                placeholder="ارغي معايا في أي حاجة يا هندسة..."
                 className="flex-1 py-2 px-3 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
               />
               <button

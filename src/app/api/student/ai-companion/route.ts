@@ -7,7 +7,10 @@ import {
   getStudentLearningContext,
   generateAiCompanionReply,
   sendPhoneReminderToStudent,
+  encodeChatPayload,
+  decodeChatPayload,
 } from "@/lib/ai-companion";
+import { STICKER_MAP } from "@/lib/ai-stickers";
 import { formatDurationArabic } from "@/lib/video-helper";
 
 export async function GET() {
@@ -42,22 +45,20 @@ export async function GET() {
 
     if (rawMessages.length === 0) {
       const firstName = context.user.name?.split(" ")[0] || "يا هندسة";
-      let welcome = `أهلاً بك يا ${firstName} 👋🤖 أنا **رفيقك الذكي** داخل منصة هندسة.\n\nاسألني في أي وقت عن دروسك أو خطة مذاكرتك، وهفكرك أول بأول لو في محاضرة نزلت أو نسيت تكمل حصة برسائل على رقمك الخاص (**${
-        context.user.phone || "المسجل بحسابك"
-      }**).`;
+      let welcome = `أهلاً يا ${firstName} 👋 عامل إيه؟\nأنا زميلك الذكي هنا — احكيلي في أي حاجة تخطر على بالك زي ChatGPT (مذاكرة، برمجة، مسائل، هزار، فضفضة)، وكمان بفكرك لو في محاضرة نزلت أو نسيت تكملها.`;
 
       if (pendingTotal > 0) {
         const firstUnwatched = context.unwatchedLectures[0];
         const firstUnfinished = context.unfinishedLectures[0];
-        welcome += `\n\n📌 **تذكير سريع حالياً:**\n`;
+        welcome += `\n\n📌 على السريع كده مستنيك حالياً:\n`;
         if (firstUnwatched) {
-          welcome += `• محاضرة جديدة لم تشاهدها: **${firstUnwatched.subjectName}** — ${firstUnwatched.lessonTitle} (${formatDurationArabic(
+          welcome += `• محاضرة جديدة: **${firstUnwatched.subjectName}** — ${firstUnwatched.lessonTitle} (${formatDurationArabic(
             firstUnwatched.durationSeconds
           )})\n`;
         }
         if (firstUnfinished) {
           const min = Math.max(1, Math.floor(firstUnfinished.lastPositionSeconds / 60));
-          welcome += `• محاضرة نسيت تكملها: **${firstUnfinished.subjectName}** — ${firstUnfinished.videoTitle} (وقفت عند الدقيقة ${min})\n`;
+          welcome += `• حصة مكمّلتهاش: **${firstUnfinished.subjectName}** — ${firstUnfinished.videoTitle} (دقيقة ${min})\n`;
         }
       }
 
@@ -66,13 +67,16 @@ export async function GET() {
           userId,
           role: "ASSISTANT",
           channel: "WEB",
-          encryptedContent: encryptForUser(userId, welcome),
+          encryptedContent: encodeChatPayload(userId, {
+            text: welcome,
+            sticker: "salute",
+          }),
         },
       });
       rawMessages = [createdWelcome];
     } else if (pendingTotal > 0 && hoursSinceLastMsg >= 12) {
       const firstName = context.user.name?.split(" ")[0] || "يا هندسة";
-      const reminderLines = [`👋 وحشتنا يا ${firstName}! حبيت أفكرك بالمحاضرات اللي مستنياك:`];
+      const reminderLines = [`👋 إيه يا ${firstName} غبت فين! بقولك، في محاضرات مستنياك على المنصة:`];
       if (context.unwatchedLectures[0]) {
         reminderLines.push(
           `🆕 ${context.unwatchedLectures[0].subjectName}: ${context.unwatchedLectures[0].lessonTitle}`
@@ -81,17 +85,20 @@ export async function GET() {
       if (context.unfinishedLectures[0]) {
         const min = Math.max(1, Math.floor(context.unfinishedLectures[0].lastPositionSeconds / 60));
         reminderLines.push(
-          `⏸️ لسه مكمّلتش "${context.unfinishedLectures[0].videoTitle}" (وقفت عند الدقيقة ${min})`
+          `⏸️ لسه مكمّلتش "${context.unfinishedLectures[0].videoTitle}" (الدقيقة ${min})`
         );
       }
-      reminderLines.push(`تحب أبدأ معاك ولا أبعتلك التذكير على رقمك؟`);
+      reminderLines.push(`تحب ننجزها سوا ولا أبعتهالك على رقمك؟`);
 
       const proactive = await prisma.aiChatMessage.create({
         data: {
           userId,
           role: "ASSISTANT",
           channel: "WEB",
-          encryptedContent: encryptForUser(userId, reminderLines.join("\n")),
+          encryptedContent: encodeChatPayload(userId, {
+            text: reminderLines.join("\n"),
+            sticker: "coffee_grind",
+          }),
         },
       });
       rawMessages = [...rawMessages, proactive];
@@ -113,13 +120,19 @@ export async function GET() {
 
     return NextResponse.json({
       context,
-      messages: rawMessages.map((m) => ({
-        id: m.id,
-        role: m.role,
-        channel: m.channel,
-        content: decryptForUser(userId, m.encryptedContent),
-        createdAt: m.createdAt,
-      })),
+      messages: rawMessages.map((m) => {
+        const decoded = decodeChatPayload(userId, m.encryptedContent);
+        return {
+          id: m.id,
+          role: m.role,
+          channel: m.channel,
+          content: decoded.text,
+          sticker: decoded.sticker || null,
+          aiReaction: decoded.aiReaction || null,
+          userReaction: decoded.userReaction || null,
+          createdAt: m.createdAt,
+        };
+      }),
       secrets: rawSecrets.map((s) => ({
         id: s.id,
         title: decryptForUser(userId, s.encryptedTitle),
@@ -149,8 +162,11 @@ export async function POST(req: NextRequest) {
 
     if (action === "CHAT") {
       const messageText = String(body.message || "").trim();
-      if (!messageText) {
-        return NextResponse.json({ error: "الرسالة فارغة" }, { status: 400 });
+      const rawSticker = typeof body.sticker === "string" ? body.sticker.trim() : "";
+      const userSticker = STICKER_MAP.has(rawSticker) ? rawSticker : null;
+
+      if (!messageText && !userSticker) {
+        return NextResponse.json({ error: "اكتب رسالة أو اختر استيكر" }, { status: 400 });
       }
 
       const context = await getStudentLearningContext(userId);
@@ -159,12 +175,15 @@ export async function POST(req: NextRequest) {
       }
 
       // حفظ رسالة الطالب مشفرة بالكامل
-      const userMsgRecord = await prisma.aiChatMessage.create({
+      let userMsgRecord = await prisma.aiChatMessage.create({
         data: {
           userId,
           role: "USER",
           channel: "WEB",
-          encryptedContent: encryptForUser(userId, messageText),
+          encryptedContent: encodeChatPayload(userId, {
+            text: messageText,
+            sticker: userSticker,
+          }),
         },
       });
 
@@ -190,25 +209,45 @@ export async function POST(req: NextRequest) {
 
       const recentMessages = rawHistory
         .reverse()
-        .map((m) => ({
-          role: m.role,
-          content: decryptForUser(userId, m.encryptedContent),
-        }));
+        .map((m) => {
+          const decoded = decodeChatPayload(userId, m.encryptedContent);
+          return {
+            role: m.role,
+            content: decoded.text || (decoded.sticker ? `[استيكر: ${decoded.sticker}]` : ""),
+          };
+        });
 
       const result = await generateAiCompanionReply({
         userId,
         userMessage: messageText,
+        userSticker,
         context,
         decryptedSecrets,
         recentMessages,
       });
+
+      if (result.reactToUser) {
+        userMsgRecord = await prisma.aiChatMessage.update({
+          where: { id: userMsgRecord.id },
+          data: {
+            encryptedContent: encodeChatPayload(userId, {
+              text: messageText,
+              sticker: userSticker,
+              aiReaction: result.reactToUser,
+            }),
+          },
+        });
+      }
 
       const assistantMsgRecord = await prisma.aiChatMessage.create({
         data: {
           userId,
           role: "ASSISTANT",
           channel: "WEB",
-          encryptedContent: encryptForUser(userId, result.reply),
+          encryptedContent: encodeChatPayload(userId, {
+            text: result.reply,
+            sticker: result.sticker || null,
+          }),
         },
       });
 
@@ -219,6 +258,9 @@ export async function POST(req: NextRequest) {
           role: "USER",
           channel: "WEB",
           content: messageText,
+          sticker: userSticker,
+          aiReaction: result.reactToUser || null,
+          userReaction: null,
           createdAt: userMsgRecord.createdAt,
         },
         assistantMessage: {
@@ -226,10 +268,48 @@ export async function POST(req: NextRequest) {
           role: "ASSISTANT",
           channel: "WEB",
           content: result.reply,
+          sticker: result.sticker || null,
+          aiReaction: null,
+          userReaction: null,
           createdAt: assistantMsgRecord.createdAt,
         },
         savedSecret: result.savedSecret || null,
         phoneDispatch: result.phoneDispatch || null,
+      });
+    }
+
+    if (action === "REACT") {
+      const messageId = String(body.messageId || "");
+      const emoji = typeof body.emoji === "string" ? body.emoji.trim() : "";
+
+      if (!messageId) {
+        return NextResponse.json({ error: "معرف الرسالة مطلوب" }, { status: 400 });
+      }
+
+      const existingMsg = await prisma.aiChatMessage.findFirst({
+        where: { id: messageId, userId },
+      });
+      if (!existingMsg) {
+        return NextResponse.json({ error: "الرسالة غير موجودة" }, { status: 404 });
+      }
+
+      const decoded = decodeChatPayload(userId, existingMsg.encryptedContent);
+      const nextUserReaction = decoded.userReaction === emoji || !emoji ? null : emoji;
+
+      await prisma.aiChatMessage.update({
+        where: { id: existingMsg.id },
+        data: {
+          encryptedContent: encodeChatPayload(userId, {
+            ...decoded,
+            userReaction: nextUserReaction,
+          }),
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        messageId: existingMsg.id,
+        userReaction: nextUserReaction,
       });
     }
 
