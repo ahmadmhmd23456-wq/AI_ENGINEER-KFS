@@ -460,11 +460,11 @@ export default function StudentAiCompanionPage() {
                     >
                       {!isUser && (
                         <div className="flex items-center gap-1.5 text-[10px] text-cyan-400 font-bold mb-1.5">
-                          <Bot className="w-3.5 h-3.5" />
-                          <span>زميلك الذكي</span>
+                          <MessageCircle className="w-3.5 h-3.5" />
+                          <span>صاحبك</span>
                           {msg.channel === "WHATSAPP" && (
                             <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
-                              أُرسلت لرقمك 📱
+                              اتبعَت لرقمك 📱
                             </span>
                           )}
                         </div>
@@ -548,7 +548,7 @@ export default function StudentAiCompanionPage() {
                 <div className="flex justify-end">
                   <div className="bg-slate-800/80 border border-slate-700 rounded-2xl px-4 py-2.5 text-xs text-cyan-300 flex items-center gap-2">
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>بيكتبلك رد...</span>
+                    <span>بيكتب...</span>
                   </div>
                 </div>
               )}
@@ -575,13 +575,13 @@ export default function StudentAiCompanionPage() {
               </div>
             )}
 
-            {/* اختصارات ذكية سريعة */}
+            {/* اختصارات سريعة */}
             <div className="px-3 py-2 bg-slate-950/60 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto">
               {[
-                "إيه الأخبار يا صاحبي؟",
-                "احكيلي نكتة تفصلني ضحك 😂",
-                "عندي محاضرات إيه جديدة أو نسيتها؟",
-                "مضغوط ومحتاج أفصل شوية",
+                "عامل إيه؟",
+                "احكيلي حاجة تضحك 😂",
+                "عندي محاضرات إيه؟",
+                "مخنوق ومحتاج أفصل",
               ].map((prompt) => (
                 <button
                   key={prompt}
@@ -621,7 +621,7 @@ export default function StudentAiCompanionPage() {
                 type="text"
                 value={inputMsg}
                 onChange={(e) => setInputMsg(e.target.value)}
-                placeholder="احكي لزميلك الذكي في أي حاجة زي ChatGPT، أو ابعت استيكر..."
+                placeholder="اكتب رسالة لصاحبك أو ابعت استيكر..."
                 className="flex-1 py-2.5 px-3.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
               />
               <button

@@ -48,20 +48,16 @@ export async function GET() {
 
     if (rawMessages.length === 0) {
       const firstName = extractFirstName(context.user.name);
-      let welcome = `أهلاً يا ${firstName} 👋 عامل إيه؟\nأنا زميلك الذكي هنا — احكيلي في أي حاجة تخطر على بالك زي ChatGPT (مذاكرة، برمجة، مسائل، هزار، فضفضة)، وكمان بفكرك لو في محاضرة نزلت أو نسيت تكملها.`;
+      let welcome = `أهلاً يا ${firstName} 👋 عامل إيه النهارده؟ ارغي معايا في أي حاجة تيجي في بالك، سواء مذاكرة، فضفضة، أو حتى هزار.`;
 
       if (pendingTotal > 0) {
         const firstUnwatched = context.unwatchedLectures[0];
         const firstUnfinished = context.unfinishedLectures[0];
-        welcome += `\n\n📌 على السريع كده مستنيك حالياً:\n`;
         if (firstUnwatched) {
-          welcome += `• محاضرة جديدة: **${firstUnwatched.subjectName}** — ${firstUnwatched.lessonTitle} (${formatDurationArabic(
-            firstUnwatched.durationSeconds
-          )})\n`;
-        }
-        if (firstUnfinished) {
+          welcome += `\n\nوعلى السريع كده، نزلتلك محاضرة "${firstUnwatched.lessonTitle}" في ${firstUnwatched.subjectName} لما تبقى فاضي تسمعها.`;
+        } else if (firstUnfinished) {
           const min = Math.max(1, Math.floor(firstUnfinished.lastPositionSeconds / 60));
-          welcome += `• حصة مكمّلتهاش: **${firstUnfinished.subjectName}** — ${firstUnfinished.videoTitle} (دقيقة ${min})\n`;
+          welcome += `\n\nوبالمناسبة، لسه مكمّلتش "${firstUnfinished.videoTitle}" في ${firstUnfinished.subjectName} (وقفت عند الدقيقة ${min}).`;
         }
       }
 
@@ -72,7 +68,7 @@ export async function GET() {
           channel: "WEB",
           encryptedContent: encodeChatPayload(userId, {
             text: welcome,
-            sticker: "salute",
+            sticker: null,
           }),
         },
       });

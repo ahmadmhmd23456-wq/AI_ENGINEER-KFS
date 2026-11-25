@@ -134,7 +134,7 @@ export default function AiCompanionWidget() {
               </div>
             ) : (
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                احكي معايا في أي حاجة زي صاحبك أو ChatGPT، هزر، اسأل في الدراسة، أو افتح الشات الكامل للاستيكرز والريأكت.
+                ارغي معايا في أي حاجة تيجي في بالك، أو افتح الشات الكامل.
               </p>
             )}
           </div>
@@ -148,7 +148,7 @@ export default function AiCompanionWidget() {
                 type="text"
                 value={quickMsg}
                 onChange={(e) => setQuickMsg(e.target.value)}
-                placeholder="ارغي معايا في أي حاجة يا هندسة..."
+                placeholder="اكتب رسالة..."
                 className="flex-1 py-2 px-3 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
               />
               <button
