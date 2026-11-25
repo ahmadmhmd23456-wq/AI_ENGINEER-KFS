@@ -15,6 +15,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "غير مصرح، يرجى تسجيل الدخول" }, { status: 401 });
     }
 
+    // التحقق من عدم حظر الحساب أمنياً
+    const dbUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { status: true },
+    });
+    if (dbUser?.status === "LOCKED") {
+      return NextResponse.json(
+        { error: "تم حظر حسابك أمنياً بسبب مخالفة سياسة الحماية" },
+        { status: 403 }
+      );
+    }
+
     const { videoId } = await req.json();
 
     const video = await prisma.video.findUnique({

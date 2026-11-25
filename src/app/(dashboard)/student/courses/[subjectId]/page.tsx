@@ -54,6 +54,10 @@ export default function SubjectContentPage({
     fetch(`/api/student/courses/${subjectId}`)
       .then((res) => res.json())
       .then((data) => {
+        if (data.error === "ACCOUNT_LOCKED") {
+          router.replace("/locked");
+          return;
+        }
         if (data.error) {
           setError(data.error);
         } else {

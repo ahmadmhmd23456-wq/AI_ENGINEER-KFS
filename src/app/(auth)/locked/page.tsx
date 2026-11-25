@@ -5,9 +5,9 @@ import { ShieldAlert, MessageCircle, AlertTriangle, ArrowRight } from "lucide-re
 import { signOut } from "next-auth/react";
 
 export default function AccountLockedPage() {
-  const adminPhone = "201012345678"; // رقم الأدمن
+  const adminPhone = "201065375309"; // رقم الأدمن م/ أحمد
   const whatsappUrl = `https://wa.me/${adminPhone}?text=${encodeURIComponent(
-    "السلام عليكم يا دكتور، حسابي في منصة هندسة تم إيقافه أمنياً وأرغب في مراجعة سبب القفل وفك الحظر."
+    "السلام عليكم م/ أحمد، حسابي في منصة هندسة تم إيقافه أمنياً وأرغب في مراجعة سبب القفل وفك الحظر."
   )}`;
 
   return (
@@ -25,9 +25,9 @@ export default function AccountLockedPage() {
             حالة الحساب: مقفول أمنياً (LOCKED)
           </span>
 
-          <h1 className="text-2xl font-bold text-white mb-2">تم إيقاف حسابك مؤقتاً</h1>
+          <h1 className="text-2xl font-bold text-white mb-2">تم حظر وإيقاف حسابك</h1>
           <p className="text-slate-400 text-sm leading-relaxed mb-6">
-            تم رصد محاولة دخول غير مصرح بها (جهاز غير مسجل أو محاولة تغيير حساب Google المربوط برقمك). لحماية حسابك والمحتوى، تم تعليق الدخول فوراً وإخطار المدرس بالواقعة.
+            تم إيقاف الحساب فوراً بسبب رصد محاولة تصوير أو تسجيل شاشة لمحتوى المحاضرات، أو محاولة دخول غير مصرح بها من جهاز آخر. تم تسجيل الواقعة وإخطار م/ أحمد.
           </p>
 
           <div className="w-full bg-slate-950/80 border border-slate-800 rounded-xl p-4 text-right mb-6 space-y-2">

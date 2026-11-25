@@ -16,6 +16,17 @@ export async function GET(
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
     }
 
+    const dbUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { status: true },
+    });
+    if (dbUser?.status === "LOCKED") {
+      return NextResponse.json(
+        { error: "ACCOUNT_LOCKED" },
+        { status: 403 }
+      );
+    }
+
     const { subjectId } = await params;
 
     // 1. التحقق من شراء المادة
