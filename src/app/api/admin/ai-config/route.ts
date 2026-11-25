@@ -6,6 +6,8 @@ import {
   testConfiguredAiProvider,
 } from "@/lib/ai-companion";
 
+export const maxDuration = 60;
+
 export async function GET() {
   try {
     const { error } = await requireAdmin();

@@ -14,6 +14,8 @@ import {
 import { STICKER_MAP } from "@/lib/ai-stickers";
 import { formatDurationArabic } from "@/lib/video-helper";
 
+export const maxDuration = 60;
+
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);

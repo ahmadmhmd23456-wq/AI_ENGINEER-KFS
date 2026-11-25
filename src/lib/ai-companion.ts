@@ -599,7 +599,13 @@ async function callGemini(params: {
   maxOutputTokens?: number;
   temperature?: number;
 }): Promise<{ ok: boolean; model?: string; text?: string; error?: string }> {
-  const models = ["gemini-3.8-flash", "gemini-2.5-flash"];
+  const models = [
+    "gemini-flash-lite-latest",
+    "gemini-3-flash-preview",
+    "gemini-3.8-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-flash-latest",
+  ];
   let lastError = "فشل الاتصال بـ Gemini";
 
   for (const model of models) {
@@ -622,7 +628,7 @@ async function callGemini(params: {
               ...(params.jsonMode ? { responseMimeType: "application/json" } : {}),
             },
           }),
-          signal: AbortSignal.timeout(18000),
+          signal: AbortSignal.timeout(15000),
         }
       );
 
@@ -661,7 +667,7 @@ export async function testConfiguredAiProvider(): Promise<{
     const g = await callGemini({
       apiKey: geminiKey,
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      maxOutputTokens: 512,
+      maxOutputTokens: 1024,
       temperature: 0.7,
     });
     return g.ok
