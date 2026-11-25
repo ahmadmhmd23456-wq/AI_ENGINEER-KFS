@@ -4,7 +4,8 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
-import { GraduationCap, BookOpen, CreditCard, LogOut, ShieldCheck } from "lucide-react";
+import { GraduationCap, BookOpen, CreditCard, LogOut, ShieldCheck, Bot } from "lucide-react";
+import AiCompanionWidget from "@/components/student/AiCompanionWidget";
 
 export default function StudentLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -12,6 +13,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
 
   const navItems = [
     { label: "المواد الدراسية", href: "/student/courses", icon: BookOpen },
+    { label: "رفيقي الذكي", href: "/student/ai-companion", icon: Bot },
     { label: "مدفوعاتي واشتراكاتي", href: "/student/purchases", icon: CreditCard },
   ];
 
@@ -28,6 +30,28 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
             <div className="text-[11px] text-blue-400">بوابة الطالب الذكية</div>
           </div>
         </Link>
+
+        {/* روابط سطح المكتب */}
+        <nav className="hidden sm:flex items-center gap-2">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = pathname === item.href || pathname?.startsWith(item.href + "/");
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  isActive
+                    ? "bg-blue-600/20 text-blue-300 border border-blue-500/30"
+                    : "text-slate-300 hover:text-white hover:bg-slate-800/70"
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
 
         {/* معلومات الطالب وتسجيل الخروج */}
         <div className="flex items-center gap-3">
@@ -53,6 +77,9 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 md:p-8">
         {children}
       </main>
+
+      {/* زر ونافذة رفيق الطالب الذكي العائمة */}
+      <AiCompanionWidget />
 
       {/* الشريط السفلي للموبايل (Mobile Tab Bar) */}
       <nav className="sm:hidden bg-slate-900/95 border-t border-slate-800 p-2 fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around backdrop-blur-md">

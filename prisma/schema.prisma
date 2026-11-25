@@ -39,6 +39,11 @@ model User {
   auditLogs             AuditLog[]     @relation("UserAudits")
   resolvedAudits        AuditLog[]     @relation("AdminResolutions")
 
+  aiWhatsappReminders   Boolean        @default(true)
+  lastAiReminderAt      DateTime?
+  aiMessages            AiChatMessage[]
+  aiSecrets             AiPrivateSecret[]
+
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
@@ -314,4 +319,29 @@ model Notification {
 
   @@index([userId])
   @@index([status])
+}
+
+model AiChatMessage {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role             String   // USER, ASSISTANT
+  encryptedContent String
+  channel          String   @default("WEB") // WEB, WHATSAPP
+  createdAt        DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model AiPrivateSecret {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  encryptedTitle   String
+  encryptedContent String
+  category         String   @default("SECRET") // SECRET, GOAL, NOTE
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId, createdAt])
 }

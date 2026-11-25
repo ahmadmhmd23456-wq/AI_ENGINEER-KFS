@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth-guard";
 import { detectVideoProvider, fetchVideoMetadata } from "@/lib/video-helper";
+import { notifyStudentsOfNewLecture } from "@/lib/ai-companion";
 
 export async function POST(req: NextRequest) {
   try {
@@ -54,7 +55,23 @@ export async function POST(req: NextRequest) {
           durationSeconds: finalDurationSeconds > 0 ? finalDurationSeconds : 3600,
           isPreviewFree: videoData.isPreviewFree || false,
         },
+        include: {
+          lesson: true,
+        },
       });
+
+      // إخطار الطلاب المشتركين عبر الرفيق الذكي والواتساب الخاص بهم عند نشر فيديو/محاضرة جديدة
+      if (
+        video.lesson.isPublished &&
+        (!video.lesson.publishAt || new Date(video.lesson.publishAt) <= new Date())
+      ) {
+        notifyStudentsOfNewLecture({
+          subjectId: video.lesson.subjectId,
+          lessonTitle: video.lesson.title,
+          videoTitle: video.title,
+          durationSeconds: video.durationSeconds,
+        }).catch(() => {});
+      }
 
       return NextResponse.json({ success: true, video });
     }
