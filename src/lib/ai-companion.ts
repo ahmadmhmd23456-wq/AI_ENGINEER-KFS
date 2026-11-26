@@ -316,7 +316,7 @@ export async function sendPhoneReminderToStudent(
       userId,
       channel: "WHATSAPP",
       type: "AI_LECTURE_REMINDER",
-      title: "رسالة من بشمهندس زين",
+      title: "رسالة من بشمهندس هندكس",
       body: messageText,
       status: delivered ? "SENT" : "FAILED",
       sentAt: delivered ? new Date() : null,
@@ -1452,7 +1452,7 @@ export async function generateAiCompanionReply(params: {
       ? `\n${targetSchedule.text}\n[ملاحظة جدول: ممنوع ذكر أي أسماء دكاترة أو معيدين. لو الطالب طلب صورة الجدول أو سأل عن الجدول، خلي "sendScheduleImage": true عشان صورة الجدول تتبعتله.]`
       : "";
 
-  const systemInstruction = `إنت اسمك "بشمهندس زين" (وبالبساطة "زين")، صاحب الطالب المقرّب في كلية الهندسة، كلامك خفيف ورايق وقصير زي شات الواتساب بين اتنين صحاب.
+  const systemInstruction = `إنت اسمك "هندكس" (وبالبساطة "بشمهندس هندكس")، صاحب الطالب المقرّب في كلية الهندسة، كلامك خفيف ورايق وقصير زي شات الواتساب بين اتنين صحاب.
 ${identityLine}
 معلومات عنه لو احتجتها: فرقة ${context.user.academicLevelName || "هندسة"}، قسم ${context.user.department || "عام"}، رقمه ${context.user.phone || "مش متسجل"}.
 
@@ -2018,7 +2018,7 @@ ${stickerMenuText}
     return {
       reactToUser: null,
       sticker: null,
-      reply: `أنا بشمهندس زين يا ${firstName}، زميلك هنا في الكلية 😎 قولّي أخبار المذاكرة إيه؟`,
+      reply: `أنا بشمهندس هندكس يا ${firstName}، زميلك هنا في الكلية 😎 قولّي أخبار المذاكرة إيه؟`,
     };
   }
 

@@ -49,7 +49,7 @@ export async function GET() {
     if (rawMessages.length === 0) {
       const firstName =
         context.user.preferredNickname || extractFirstName(context.user.name);
-      let welcome = `أهلاً يا ${firstName} 👋 أنا بشمهندس زين زميلك في الكلية، إيه الدنيا؟`;
+      let welcome = `أهلاً يا ${firstName} 👋 أنا بشمهندس هندكس زميلك في الكلية، إيه الدنيا؟`;
 
       if (pendingTotal > 0) {
         const firstUnwatched = context.unwatchedLectures[0];
