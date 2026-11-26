@@ -693,6 +693,31 @@ export const MECHATRONICS_LEVEL1_TIMETABLE_TEXT = `جدول طلاب المست�
   - 2 إلى 4: تمرين المعادلات التفاضلية وتحليل الأعداد (فصل 1، فصل 2)
   - 3 إلى 5: معمل الرسم الميكانيكي باستخدام الحاسب (فصل 3، فصل 4)`;
 
+export const AI_LEVEL1_TIMETABLE_IMAGE = "/schedules/ai-level-1-term-1.jpg";
+export const AI_LEVEL1_TIMETABLE_TEXT = `جدول طلاب المستوى الأول (أولى) برنامج هندسة الذكاء الاصطناعي - الفصل الدراسي الأول (2026/2027):
+• السبت:
+  - 9 إلى 10: تمرين برمجة الحاسب (فصل 1، فصل 2) | 9 إلى 11: تمرين تصميم منطقي (فصل 3، فصل 4)
+  - 10 إلى 11: معمل برمجة الحاسب (فصل 1، فصل 2)
+  - 11 إلى 12: معمل الدوائر الكهربية (فصل 1، فصل 2) | تمرين برمجة الحاسب (فصل 3، فصل 4)
+  - 12 إلى 1: معمل الدوائر الكهربية (فصل 3، فصل 4) | 12 إلى 2: تمرين تصميم منطقي (فصل 1، فصل 2)
+  - 1 إلى 3: تمرين الدوائر الكهربية (فصل 3، فصل 4)
+  - 2 إلى 3: معمل تصميم منطقي (فصل 1، فصل 2)
+  - 3 إلى 4: معمل برمجة الحاسب (فصل 3، فصل 4) | 3 إلى 5: تمرين الدوائر الكهربية (فصل 1، فصل 2)
+  - 4 إلى 5: معمل تصميم منطقي (فصل 3، فصل 4)
+• الأحد:
+  - 9 إلى 11: محاضرة معادلات تفاضلية وتحليل عددي (قاعة 202 المبنى الجديد)
+  - 11 إلى 12: إرشاد أكاديمي
+  - 1 إلى 3: محاضرة أسس الهندسة الإلكترونية (قاعة 202 المبنى الجديد)
+• الإثنين:
+  - 9 إلى 11: محاضرة برمجة الحاسب (قاعة 202 المبنى الجديد)
+  - 11 إلى 1: محاضرة تصميم منطقي (قاعة 202 المبنى الجديد)
+  - 1 إلى 3: محاضرة دوائر كهربية (قاعة 202 المبنى الجديد)
+  - 3 إلى 5: محاضرة أخلاقيات المهنة (قاعة 202 المبنى الجديد)
+• الخميس:
+  - 9 إلى 11: تمرين الأسس الإلكترونية (فصل 1، فصل 2 — معامل كلية الهندسة) | تمرين معادلات تفاضلية (فصل 3، فصل 4 — قاعات كلية الهندسة)
+  - 11 إلى 12: معمل الأسس الإلكترونية (فصل 1، فصل 2 — معامل كلية الهندسة) | تمرين الأسس الإلكترونية (فصل 3، فصل 4 — معامل كلية الهندسة)
+  - 12 إلى 2: تمرين معادلات تفاضلية (فصل 1، فصل 2 — معمل كلية الهندسة) | معمل الأسس الإلكترونية (فصل 3، فصل 4 — معامل كلية الهندسة)`;
+
 const AI_LLM_VAULT_ID = "PLATFORM_AI_LLM_VAULT";
 const AI_LLM_SETTING_KEY = "AI_LLM_CONFIG";
 
@@ -1382,24 +1407,49 @@ export async function generateAiCompanionReply(params: {
       }))
     : recentMessages;
 
-  const isMechatronicsLevel1 =
-    context.user.department === "MECHATRONICS" &&
-    Boolean(
-      context.user.academicLevelName &&
-        (context.user.academicLevelName.includes("الأول") || context.user.academicLevelName.includes("1"))
-    );
-  const mentionsMechatronics = norm.includes("ميكاترونكس") || norm.includes("ميكاترونيكس") || norm.includes("ميكاترونيات");
-  const asksAboutSchedule = ["جدول", "الجدول", "مواعيد", "معاد", "السكشن", "السكاشن", "المعمل", "المعامل"].some(
-    (k) => norm.includes(k)
+  const isLevel1 = Boolean(
+    context.user.academicLevelName &&
+      (context.user.academicLevelName.includes("الأول") || context.user.academicLevelName.includes("1"))
   );
+  const isMechatronicsLevel1 = context.user.department === "MECHATRONICS" && isLevel1;
+  const isAiLevel1 = context.user.department === "AI" && isLevel1;
+  const mentionsMechatronics =
+    norm.includes("ميكاترونكس") || norm.includes("ميكاترونيكس") || norm.includes("ميكاترونيات");
+  const mentionsAi = norm.includes("ذكاء") || norm.includes("الذكاء");
+  const asksAboutSchedule = [
+    "جدول",
+    "الجدول",
+    "مواعيد",
+    "معاد",
+    "السكشن",
+    "السكاشن",
+    "المعمل",
+    "المعامل",
+  ].some((k) => norm.includes(k));
+
+  const targetSchedule =
+    mentionsMechatronics || (isMechatronicsLevel1 && !mentionsAi)
+      ? {
+          image: MECHATRONICS_LEVEL1_TIMETABLE_IMAGE,
+          text: MECHATRONICS_LEVEL1_TIMETABLE_TEXT,
+          label: "أولى ميكاترونكس",
+        }
+      : mentionsAi || (isAiLevel1 && !mentionsMechatronics)
+      ? {
+          image: AI_LEVEL1_TIMETABLE_IMAGE,
+          text: AI_LEVEL1_TIMETABLE_TEXT,
+          label: "أولى ذكاء اصطناعي",
+        }
+      : null;
+
   const wantsDirectScheduleImage =
+    Boolean(targetSchedule) &&
     asksAboutSchedule &&
-    (isMechatronicsLevel1 || mentionsMechatronics) &&
     (norm.includes("جدول") || norm.includes("الجدول"));
 
   const scheduleInstructionBlock =
-    isMechatronicsLevel1 || (asksAboutSchedule && mentionsMechatronics)
-      ? `\n${MECHATRONICS_LEVEL1_TIMETABLE_TEXT}\n[ملاحظة جدول: ممنوع ذكر أي أسماء دكاترة أو معيدين. لو الطالب طلب صورة الجدول أو سأل عن الجدول، خلي "sendScheduleImage": true عشان صورة الجدول تتبعتله.]`
+    targetSchedule && (isLevel1 || asksAboutSchedule)
+      ? `\n${targetSchedule.text}\n[ملاحظة جدول: ممنوع ذكر أي أسماء دكاترة أو معيدين. لو الطالب طلب صورة الجدول أو سأل عن الجدول، خلي "sendScheduleImage": true عشان صورة الجدول تتبعتله.]`
       : "";
 
   const systemInstruction = `إنت صاحب الطالب المقرّب في كلية الهندسة، كلامك خفيف ورايق وقصير زي شات الواتساب بين اتنين صحاب.
@@ -1508,13 +1558,13 @@ ${stickerMenuText}
       : filtered.reply;
 
     const shouldSendScheduleImg =
-      wantsDirectScheduleImage ||
-      (Boolean(parsed.sendScheduleImage) && (isMechatronicsLevel1 || mentionsMechatronics));
+      Boolean(targetSchedule) &&
+      (wantsDirectScheduleImage || Boolean(parsed.sendScheduleImage));
 
     return {
       ...filtered,
       reply: cleanReply,
-      imageUrl: shouldSendScheduleImg ? MECHATRONICS_LEVEL1_TIMETABLE_IMAGE : null,
+      imageUrl: shouldSendScheduleImg && targetSchedule ? targetSchedule.image : null,
       savedSecret,
       savedNickname,
       phoneDispatch,
@@ -1651,12 +1701,12 @@ ${stickerMenuText}
   }
 
   // 5. المحرك التفاعلي الحر بشخصية الزميل المصري (مع حفظ الاسم المفضل والجدول إذا طُلب)
-  if (wantsDirectScheduleImage) {
+  if (wantsDirectScheduleImage && targetSchedule) {
     return {
       reactToUser: null,
       sticker: null,
-      imageUrl: MECHATRONICS_LEVEL1_TIMETABLE_IMAGE,
-      reply: `اتفضل يا ${firstName} جدول أولى ميكاترونكس أهو 📅 اضغط عليه لو حابب تكبره، ولو عايز تسأل على معاد مادة معينة قولي!`,
+      imageUrl: targetSchedule.image,
+      reply: `اتفضل يا ${firstName} جدول ${targetSchedule.label} أهو 📅 اضغط عليه لو حابب تكبره، ولو عايز تسأل على معاد مادة معينة قولي!`,
     };
   }
   if (savedNickname) {
