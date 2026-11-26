@@ -13,7 +13,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
 
   const navItems = [
     { label: "المواد الدراسية", href: "/student/courses", icon: BookOpen },
-    { label: "رفيقي الذكي", href: "/student/ai-companion", icon: Bot },
+    { label: "بشمهندس زين", href: "/student/ai-companion", icon: Bot },
     { label: "مدفوعاتي واشتراكاتي", href: "/student/purchases", icon: CreditCard },
   ];
 

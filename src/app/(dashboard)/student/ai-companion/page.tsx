@@ -375,7 +375,7 @@ export default function StudentAiCompanionPage() {
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="flex flex-col items-center gap-3">
           <RefreshCw className="w-8 h-8 text-cyan-400 animate-spin" />
-          <p className="text-xs text-slate-400">جاري تجهيز رفيقك الذكي...</p>
+          <p className="text-xs text-slate-400">جاري تجهيز شات بشمهندس زين...</p>
         </div>
       </div>
     );
@@ -399,14 +399,14 @@ export default function StudentAiCompanionPage() {
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-bold text-white">رفيقك الذكي الشخصي</h1>
+                <h1 className="text-xl sm:text-2xl font-bold text-white">بشمهندس زين</h1>
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold">
                   <Lock className="w-3 h-3" />
                   <span>مشفر AES-256 لك وحدك</span>
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-1 leading-relaxed max-w-2xl">
-                مساعدك الذكي للدردشة والمذاكرة — كل محادثاتك وملاحظاتك مشفرة بالكامل وخاصة بحسابك وحدك (لا يطلع عليها أي شخص آخر)، وبيفكرك بالمحاضرات الجديدة واللي نسيت تكملها برسائل على رقمك الخاص.
+                صاحبك في الكلية للدردشة والمذاكرة — كل محادثاتك وملاحظاتك مشفرة بالكامل وخاصة بحسابك وحدك (لا يطلع عليها أي شخص آخر)، وبيفكرك بالمحاضرات الجديدة واللي نسيت تكملها برسائل على رقمك الخاص.
               </p>
             </div>
           </div>
@@ -546,7 +546,7 @@ export default function StudentAiCompanionPage() {
                       {!isUser && (
                         <div className="flex items-center gap-1.5 text-[10px] text-cyan-400 font-bold mb-1.5">
                           <MessageCircle className="w-3.5 h-3.5" />
-                          <span>صاحبك</span>
+                          <span>بشمهندس زين</span>
                           {msg.channel === "WHATSAPP" && (
                             <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
                               اتبعَت لرقمك 📱
@@ -1000,7 +1000,7 @@ export default function StudentAiCompanionPage() {
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed">
-              عند تفعيل التذكير التلقائي، سيبعثلك رفيقك الذكي رسالة على رقمك الشخصي فور نزول أي محاضرة جديدة في موادك، أو يفكرك لو بدأت محاضرة ونسيت تكملها.
+              عند تفعيل التذكير التلقائي، سيبعثلك بشمهندس زين رسالة على رقمك الشخصي فور نزول أي محاضرة جديدة في موادك، أو يفكرك لو بدأت محاضرة ونسيت تكملها.
             </p>
 
             <button

@@ -76,7 +76,7 @@ export default function AiCompanionWidget() {
               </div>
               <div>
                 <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <span>رفيقك الذكي</span>
+                  <span>بشمهندس زين</span>
                   <Lock className="w-3 h-3 text-emerald-400" />
                 </div>
                 <div className="text-[10px] text-emerald-400">مشفر خاص بك وحدك (AES-256)</div>
@@ -116,7 +116,7 @@ export default function AiCompanionWidget() {
               <div className="space-y-2">
                 {quickAiReaction && (
                   <div className="text-[11px] text-slate-400">
-                    ريأكت زميلك على رسالتك: <span className="text-sm">{quickAiReaction}</span>
+                    ريأكت زين على رسالتك: <span className="text-sm">{quickAiReaction}</span>
                   </div>
                 )}
                 {(() => {
@@ -193,10 +193,10 @@ export default function AiCompanionWidget() {
           setIsOpen((prev) => !prev);
         }}
         className="relative group flex items-center gap-2 px-4 py-3 rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-xl shadow-cyan-600/30 border border-cyan-400/30 transition-all hover:scale-105 active:scale-95"
-        title="رفيقك الذكي الشخصي"
+        title="بشمهندس زين • صديقك في الكلية"
       >
         <Bot className="w-5 h-5" />
-        <span className="text-xs font-bold hidden sm:inline">رفيقي الذكي</span>
+        <span className="text-xs font-bold hidden sm:inline">بشمهندس زين</span>
         {pendingCount > 0 && (
           <span className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-extrabold flex items-center justify-center shadow-md animate-bounce">
             {pendingCount}
