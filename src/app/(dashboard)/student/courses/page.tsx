@@ -148,7 +148,10 @@ export default function StudentCoursesPage() {
       .then((res) => res.json())
       .then((json) => {
         setData(json);
-        const userDept = deptToFetch || json?.user?.department || localStorage.getItem("student_selected_dept");
+        const isPrepUser = json?.user?.academicLevel?.slug === "prep";
+        const userDept = isPrepUser
+          ? "GENERAL"
+          : deptToFetch || json?.user?.department || localStorage.getItem("student_selected_dept");
         if (userDept) {
           setSelectedDept(userDept);
         } else {
@@ -213,6 +216,7 @@ export default function StudentCoursesPage() {
     .sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0));
 
   const currentDeptInfo = DEPARTMENTS.find((d) => d.id === selectedDept);
+  const isPrepUser = user?.academicLevel?.slug === "prep";
 
   return (
     <div className="space-y-6" dir="rtl">
@@ -227,7 +231,12 @@ export default function StudentCoursesPage() {
               </span>
 
               {/* بادج القسم المختار مع زر تغييره */}
-              {currentDeptInfo ? (
+              {isPrepUser ? (
+                <div className="px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 bg-emerald-500/15 text-emerald-300 border-emerald-500/30">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>شعبة عامة (إعدادي)</span>
+                </div>
+              ) : currentDeptInfo ? (
                 <div className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 ${currentDeptInfo.tagClass}`}>
                   {React.createElement(currentDeptInfo.icon, { className: "w-3.5 h-3.5" })}
                   <span>قسم {currentDeptInfo.shortName}</span>
@@ -239,25 +248,29 @@ export default function StudentCoursesPage() {
                 </span>
               )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  playCyberClick();
-                  setIsDeptModalOpen(true);
-                }}
-                onMouseEnter={playCyberHover}
-                className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 rounded-full text-[11px] font-medium flex items-center gap-1 transition-all"
-              >
-                <Settings2 className="w-3 h-3 text-blue-400" />
-                <span>{currentDeptInfo ? "تغيير القسم" : "اختيار القسم الآن"}</span>
-              </button>
+              {!isPrepUser && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    playCyberClick();
+                    setIsDeptModalOpen(true);
+                  }}
+                  onMouseEnter={playCyberHover}
+                  className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 rounded-full text-[11px] font-medium flex items-center gap-1 transition-all"
+                >
+                  <Settings2 className="w-3 h-3 text-blue-400" />
+                  <span>{currentDeptInfo ? "تغيير القسم" : "اختيار القسم الآن"}</span>
+                </button>
+              )}
             </div>
 
             <h1 className="text-xl sm:text-2xl font-bold text-white">
               مرحباً يا بشمهندس، {user?.name || ""} 👋
             </h1>
             <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
-              {currentDeptInfo
+              {isPrepUser
+                ? "مقررات وتدريبات الفرقة الإعدادية العامة. يمكنك الدخول لأي مادة لمتابعة المحاضرات والشيتات وبنوك الأسئلة."
+                : currentDeptInfo
                 ? `مقررات وتدريبات ${currentDeptInfo.name}. يمكنك الدخول لأي مادة لمتابعة المحاضرات والشيتات وبنوك الأسئلة.`
                 : "يرجى تحديد قسمك الهندسي لعرض المقررات المتخصصة وفقاً لتخصصك الأكاديمي."}
             </p>

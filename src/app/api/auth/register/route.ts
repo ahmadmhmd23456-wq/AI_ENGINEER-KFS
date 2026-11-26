@@ -102,6 +102,7 @@ export async function POST(req: NextRequest) {
       phone,
       password,
       academicLevelId,
+      department,
       phoneType,
       deviceFingerprint,
     } = body;
@@ -191,6 +192,40 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // التحقق من الفرقة الدراسية والقسم الهندسي
+    const ALLOWED_DEPARTMENTS = ["AI", "MECHATRONICS", "ARCHITECTURE", "CIVIL"];
+    if (typeof academicLevelId !== "string" || !academicLevelId.trim()) {
+      return NextResponse.json(
+        { error: "يرجى اختيار الفرقة / الدفعة الدراسية" },
+        { status: 400 }
+      );
+    }
+
+    const selectedLevel = await prisma.academicLevel.findUnique({
+      where: { id: academicLevelId.trim() },
+      select: { id: true, slug: true },
+    });
+
+    if (!selectedLevel) {
+      return NextResponse.json(
+        { error: "الفرقة الدراسية المختارة غير صالحة" },
+        { status: 400 }
+      );
+    }
+
+    const isPrepLevel = selectedLevel.slug === "prep";
+    let finalDepartment = "GENERAL";
+    if (!isPrepLevel) {
+      const normalizedDept = typeof department === "string" ? department.trim() : "";
+      if (!ALLOWED_DEPARTMENTS.includes(normalizedDept)) {
+        return NextResponse.json(
+          { error: "يرجى اختيار القسم الهندسي الخاص بك" },
+          { status: 400 }
+        );
+      }
+      finalDepartment = normalizedDept;
+    }
+
     // 4. تشفير كلمة المرور بـ Salt قوي (12 جولة bcrypt)
     const passwordHash = await bcrypt.hash(password, 12);
 
@@ -205,7 +240,8 @@ export async function POST(req: NextRequest) {
         phoneType: cleanPhoneType,
         initialFingerprint: cleanFingerprint,
         passwordHash,
-        academicLevelId: academicLevelId || null,
+        academicLevelId: selectedLevel.id,
+        department: finalDepartment,
         role: "STUDENT",
         status: "ACTIVE",
         emailVerified: new Date(),

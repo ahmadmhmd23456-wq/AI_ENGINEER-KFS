@@ -6,6 +6,24 @@ export async function GET() {
     const levels = await prisma.academicLevel.findMany({
       orderBy: { order: "asc" },
       include: {
+        subjects: {
+          where: { isActive: true },
+          orderBy: [{ order: "asc" }, { term: "asc" }, { createdAt: "asc" }],
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            term: true,
+            department: true,
+            price: true,
+            _count: {
+              select: {
+                lessons: true,
+                exams: true,
+              },
+            },
+          },
+        },
         _count: {
           select: { subjects: true },
         },

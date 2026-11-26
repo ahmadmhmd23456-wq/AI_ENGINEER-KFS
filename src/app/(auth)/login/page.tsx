@@ -20,6 +20,13 @@ import {
 import { getDeviceFingerprint, DeviceInfo } from "@/lib/fingerprint";
 import { playCyberHover, playCyberClick, playSuccessChime, playTargetLock } from "@/lib/sound";
 
+const DEPARTMENT_OPTIONS = [
+  { id: "AI", name: "هندسة الذكاء الاصطناعي" },
+  { id: "MECHATRONICS", name: "هندسة الميكاترونكس" },
+  { id: "ARCHITECTURE", name: "الهندسة المعمارية" },
+  { id: "CIVIL", name: "الهندسة المدنية" },
+];
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -37,8 +44,23 @@ function LoginForm() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [academicLevelId, setAcademicLevelId] = useState("");
+  const [department, setDepartment] = useState("");
   const [phoneType, setPhoneType] = useState("");
   const [levels, setLevels] = useState<any[]>([]);
+
+  const selectedLevel = levels.find((lvl) => lvl.id === academicLevelId);
+  const isPrepLevel = Boolean(
+    selectedLevel &&
+      (selectedLevel.slug === "prep" ||
+        (typeof selectedLevel.name === "string" && selectedLevel.name.includes("إعدادي")))
+  );
+  const availableDepartmentSubjects: any[] =
+    !isPrepLevel && department && Array.isArray(selectedLevel?.subjects)
+      ? selectedLevel.subjects.filter(
+          (sub: any) => sub.department === department || sub.department === "GENERAL"
+        )
+      : [];
+  const selectedDepartmentMeta = DEPARTMENT_OPTIONS.find((d) => d.id === department);
 
   // حقول تسجيل الدخول
   const [loginIdentifier, setLoginIdentifier] = useState("");
@@ -92,6 +114,15 @@ function LoginForm() {
       return;
     }
 
+    if (!isPrepLevel && !department) {
+      setErrorMessage("يرجى اختيار القسم الهندسي الخاص بك أولاً.");
+      playTargetLock();
+      setIsLoading(false);
+      return;
+    }
+
+    const finalDepartment = isPrepLevel ? "GENERAL" : department;
+
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
@@ -102,6 +133,7 @@ function LoginForm() {
           phone,
           password,
           academicLevelId,
+          department: finalDepartment,
           phoneType: phoneType || deviceInfo.deviceModel,
           deviceFingerprint: deviceInfo.fingerprint,
         }),
@@ -113,6 +145,10 @@ function LoginForm() {
         playTargetLock();
         setIsLoading(false);
         return;
+      }
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem("student_selected_dept", finalDepartment);
       }
 
       playSuccessChime();
@@ -423,7 +459,11 @@ function LoginForm() {
                 <label className="block text-xs font-medium text-slate-300 mb-1.5">الفرقة / الدفعة الدراسية</label>
                 <select
                   value={academicLevelId}
-                  onChange={(e) => setAcademicLevelId(e.target.value)}
+                  onChange={(e) => {
+                    setAcademicLevelId(e.target.value);
+                    setDepartment("");
+                    setErrorMessage(null);
+                  }}
                   className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
                 >
                   {levels.map((lvl) => (
@@ -433,6 +473,80 @@ function LoginForm() {
                   ))}
                 </select>
               </div>
+
+              {!isPrepLevel && selectedLevel && (
+                <div className="space-y-2.5 animate-in fade-in duration-200">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                      القسم الهندسي
+                    </label>
+                    <select
+                      required
+                      value={department}
+                      onChange={(e) => {
+                        setDepartment(e.target.value);
+                        setErrorMessage(null);
+                      }}
+                      className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="">-- اختر القسم الهندسي --</option>
+                      {DEPARTMENT_OPTIONS.map((dept) => (
+                        <option key={dept.id} value={dept.id}>
+                          {dept.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {department && (
+                    <div className="p-3 bg-slate-950/90 border border-indigo-500/30 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-300">
+                          <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>مواد {selectedDepartmentMeta?.name || "القسم"}</span>
+                        </div>
+                        <span className="px-2 py-0.5 rounded-full bg-indigo-500/15 border border-indigo-500/30 text-[10px] font-bold text-indigo-300">
+                          {availableDepartmentSubjects.length} مادة
+                        </span>
+                      </div>
+
+                      {availableDepartmentSubjects.length > 0 ? (
+                        <ul className="max-h-48 overflow-y-auto space-y-1.5 pr-0.5">
+                          {availableDepartmentSubjects.map((sub: any, idx: number) => (
+                            <li
+                              key={sub.id}
+                              className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg bg-slate-900/90 border border-slate-800/80 text-[11px]"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="w-5 h-5 rounded-md bg-blue-600/20 border border-blue-500/30 text-blue-300 flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+                                  {idx + 1}
+                                </span>
+                                <span className="text-slate-100 font-medium truncate">
+                                  {sub.name}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                {sub.code && (
+                                  <span className="text-[10px] font-mono text-slate-400">
+                                    {sub.code}
+                                  </span>
+                                )}
+                                <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300">
+                                  {sub.term === "SECOND" ? "ترم ثاني" : "ترم أول"}
+                                </span>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-[11px] text-slate-400 leading-relaxed">
+                          لا توجد مواد مضافة لهذا القسم في هذه الفرقة حالياً، وسيتم إضافتها قريباً.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="p-3 bg-blue-950/30 border border-blue-800/40 rounded-xl text-[11px] text-slate-300 flex items-start gap-2">
                 <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
