@@ -88,8 +88,8 @@ export default function AdminPaymentsPage() {
   const selectedStudentObj = students.find((s) => s.id === selectedUserId);
   const selectedSubjectObj = subjects.find((sub) => sub.id === selectedSubjectId);
 
-  // حساب المواد المطابقة للطالب في العرض حسب فرقته وقسمه والترم المختار
-  const matchingStudentBundleSubjects = useMemo(() => {
+  // مواد قسم وفرقة الطالب المحدد فقط
+  const matchingStudentSubjects = useMemo(() => {
     if (!selectedStudentObj) return subjects;
     const lvlId = selectedStudentObj.academicLevelId;
     const isPrep = selectedStudentObj.academicLevel?.slug === "prep";
@@ -97,13 +97,26 @@ export default function AdminPaymentsPage() {
 
     return subjects.filter((sub) => {
       if (lvlId && sub.academicLevelId !== lvlId) return false;
-      if (bundleTerm !== "ALL" && String(sub.term) !== bundleTerm) return false;
       if (dept) {
         return sub.department === dept || sub.department === "GENERAL" || !sub.department;
       }
       return true;
     });
-  }, [selectedStudentObj, subjects, bundleTerm]);
+  }, [selectedStudentObj, subjects]);
+
+  useEffect(() => {
+    if (matchingStudentSubjects.length === 0) {
+      setSelectedSubjectId("");
+    } else if (!matchingStudentSubjects.some((s) => s.id === selectedSubjectId)) {
+      setSelectedSubjectId(matchingStudentSubjects[0].id);
+    }
+  }, [matchingStudentSubjects, selectedSubjectId]);
+
+  // حساب المواد المطابقة للطالب في العرض حسب فرقته وقسمه والترم المختار
+  const matchingStudentBundleSubjects = useMemo(() => {
+    if (bundleTerm === "ALL") return matchingStudentSubjects;
+    return matchingStudentSubjects.filter((sub) => String(sub.term) === bundleTerm);
+  }, [matchingStudentSubjects, bundleTerm]);
 
   useEffect(() => {
     setSelectedBundleSubjectIds(matchingStudentBundleSubjects.map((s) => s.id));
@@ -190,7 +203,7 @@ export default function AdminPaymentsPage() {
     return name.includes(term) || phone.includes(term) || email.includes(term);
   });
 
-  const filteredModalSubjects = subjects.filter((sub) => {
+  const filteredModalSubjects = matchingStudentSubjects.filter((sub) => {
     if (!subjectSearchInModal.trim()) return true;
     const term = normalizeArabic(subjectSearchInModal);
     const name = normalizeArabic(sub.name);
@@ -791,10 +804,16 @@ export default function AdminPaymentsPage() {
                 {/* 2. إما مادة واحدة أو قائمة مواد العرض */}
                 {grantMode === "SINGLE" ? (
                   <div className="space-y-2 p-3 bg-slate-950 rounded-2xl border border-slate-800">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-2">
                       <label className="font-bold text-white flex items-center gap-1.5">
                         <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>2. اختر المادة الواحدة:</span>
+                        <span>
+                          2. مواد قسم الطالب
+                          {selectedStudentObj?.department
+                            ? ` (${DEPT_LABELS[selectedStudentObj.department] || selectedStudentObj.department})`
+                            : ""}
+                          :
+                        </span>
                       </label>
                       <span className="text-[10px] text-slate-500 font-mono">
                         {filteredModalSubjects.length} مواد
