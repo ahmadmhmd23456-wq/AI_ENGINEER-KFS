@@ -58,7 +58,13 @@ export default function StudentPurchasesPage() {
                       ترم {p.subject?.term === 1 ? "أول" : "ثاني"}
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-slate-300 font-medium">{p.paymentMethod}</td>
+                  <td className="py-3 px-4 text-slate-300 font-medium">
+                    {p.paymentMethod === "BUNDLE_GRANT"
+                      ? "عرض كل المواد (1200 ج.م)"
+                      : p.paymentMethod === "MANUAL_GRANT"
+                      ? "فتح مادة واحدة (الأدمن)"
+                      : p.paymentMethod}
+                  </td>
                   <td className="py-3 px-4 font-bold font-mono text-emerald-400">
                     {p.amount} {p.currency}
                   </td>

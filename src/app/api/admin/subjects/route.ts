@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const priceDecimal = price !== undefined ? parseFloat(price) : 50.0;
+    const priceDecimal = price !== undefined ? parseFloat(price) : 300.0;
     const orderNum = order !== undefined && order !== "" ? parseInt(order.toString(), 10) : 0;
     const deptValue = department || "GENERAL";
 

@@ -131,10 +131,14 @@ export default function StudentCoursesPage() {
   // القسم المعين للطالب من قاعدة البيانات (يُعدّل فقط من خلال الأدمن)
   const [selectedDept, setSelectedDept] = useState<string>("ALL");
 
-  // حالة مودال طلب تفعيل الكورس
+  // حالة مودال طلب تفعيل مادة واحدة (300 ج.م) أو عرض كل المواد (1200 ج.م)
   const [selectedSubjectToBuy, setSelectedSubjectToBuy] = useState<any | null>(null);
+  const [isActivationOpen, setIsActivationOpen] = useState(false);
+  const [activationMode, setActivationMode] = useState<"SINGLE" | "BUNDLE">("SINGLE");
   const [copiedPhone, setCopiedPhone] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+
+  const BUNDLE_PRICE = 1200;
 
   const LEVEL1_DEPARTMENT_SCHEDULES: Record<string, { title: string; image: string }> = {
     AI: {
@@ -260,6 +264,59 @@ export default function StudentCoursesPage() {
         </div>
       </div>
 
+      {/* بطاقة عرض كل المواد (1200 ج.م) مقابل شحن المادة الواحدة (300 ج.م) */}
+      {termSubjects.length > 0 && (() => {
+        const lockedCount = termSubjects.filter((s: any) => !s.isPurchased).length;
+        const singleSubjectsTotal = termSubjects.reduce(
+          (sum: number, s: any) => sum + (Number(s.price) || 300),
+          0
+        );
+        const savings = Math.max(0, singleSubjectsTotal - BUNDLE_PRICE);
+        if (lockedCount === 0) return null;
+
+        return (
+          <div className="bg-gradient-to-r from-amber-950/60 via-orange-950/40 to-slate-900 border border-amber-500/40 rounded-3xl p-5 sm:p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1.5">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/35 text-amber-300 text-[11px] font-bold">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>باقة العرض الكامل للترم — وفّر أكثر!</span>
+              </div>
+              <h2 className="text-base sm:text-lg font-bold text-white">
+                فعّل كل مواد القسم دفعة واحدة بـ <span className="text-amber-300 font-mono">1200 ج.م</span> فقط!
+              </h2>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                سعر المادة الواحدة <span className="font-mono font-bold text-emerald-400">300 ج.م</span>
+                {savings > 0 && (
+                  <>
+                    {" "}— بدلاً من{" "}
+                    <span className="line-through text-slate-400 font-mono">{singleSubjectsTotal} ج.م</span>
+                    {" "}(وفّر <span className="font-bold text-amber-300 font-mono">{savings} ج.م</span> عند شحن كل المواد معاً)
+                  </>
+                )}
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  playCyberClick();
+                  const firstLocked = termSubjects.find((s: any) => !s.isPurchased) || termSubjects[0];
+                  setSelectedSubjectToBuy(firstLocked || null);
+                  setActivationMode("BUNDLE");
+                  setIsActivationOpen(true);
+                }}
+                onMouseEnter={playCyberHover}
+                className="px-5 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 rounded-2xl text-xs font-extrabold flex items-center justify-center gap-2 shadow-lg shadow-amber-900/30 transition-all hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <Zap className="w-4 h-4" />
+                <span>تفعيل عرض كل المواد (1200 ج.م)</span>
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* قائمة المواد الدراسية */}
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
@@ -382,11 +439,11 @@ export default function StudentCoursesPage() {
 
               {/* الجانب الأيسر: السعر وزر الإجراء */}
               <div className="flex items-center md:flex-col md:items-end justify-between md:justify-center gap-3 pt-3 md:pt-0 border-t md:border-t-0 border-slate-800/80 flex-shrink-0">
-                <div className="text-right">
+                <div className="text-right md:text-left">
                   <div className="text-base font-bold font-mono text-emerald-400">
                     {sub.price} ج.م
                   </div>
-                  <div className="text-[10px] text-slate-500">شامل الترم كاملاً</div>
+                  <div className="text-[10px] text-slate-400">سعر المادة الواحدة</div>
                 </div>
 
                 {isUnlocked ? (
@@ -406,11 +463,13 @@ export default function StudentCoursesPage() {
                     onClick={() => {
                       playCyberClick();
                       setSelectedSubjectToBuy(sub);
+                      setActivationMode("SINGLE");
+                      setIsActivationOpen(true);
                     }}
                     onMouseEnter={playCyberHover}
                     className="py-2.5 px-5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-600/30 whitespace-nowrap hover:scale-105 active:scale-95"
                   >
-                    <span>طلب تفعيل الكورس</span>
+                    <span>شحن هذه المادة ({sub.price} ج.م)</span>
                     <Lock className="w-4 h-4" />
                   </button>
                 )}
@@ -420,8 +479,8 @@ export default function StudentCoursesPage() {
         })}
       </div>
 
-      {/* مودال طلب تفعيل الكورس يدوياً عن طريق الأدمن م/ أحمد */}
-      {selectedSubjectToBuy && (
+      {/* مودال طلب تفعيل مادة واحدة (300 ج.م) أو عرض كل المواد (1200 ج.م) */}
+      {isActivationOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm anim-video-modal" dir="rtl">
           <div className="bg-slate-900 border border-slate-700/80 rounded-3xl max-w-md w-full p-6 shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-600/10 rounded-full blur-3xl pointer-events-none" />
@@ -429,6 +488,7 @@ export default function StudentCoursesPage() {
             <button
               onClick={() => {
                 playCyberClick();
+                setIsActivationOpen(false);
                 setSelectedSubjectToBuy(null);
               }}
               className="absolute top-4 left-4 p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800/60 transition-all"
@@ -437,15 +497,77 @@ export default function StudentCoursesPage() {
             </button>
 
             {/* رأس النافذة */}
-            <div className="text-center mb-5">
-              <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mx-auto mb-3 shadow-lg shadow-emerald-500/10">
-                <Lock className="w-7 h-7" />
+            <div className="text-center mb-4">
+              <div
+                className={`w-14 h-14 rounded-2xl border flex items-center justify-center mx-auto mb-3 shadow-lg ${
+                  activationMode === "BUNDLE"
+                    ? "bg-amber-500/15 text-amber-300 border-amber-500/35 shadow-amber-500/10"
+                    : "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 shadow-emerald-500/10"
+                }`}
+              >
+                {activationMode === "BUNDLE" ? <Sparkles className="w-7 h-7" /> : <Lock className="w-7 h-7" />}
               </div>
-              <h3 className="text-lg font-bold text-white">طلب تفعيل الكورس</h3>
-              <p className="text-xs text-slate-400 mt-1">{selectedSubjectToBuy.name}</p>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 mt-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono font-bold text-sm">
-                <span>رسوم الاشتراك:</span>
-                <span>{selectedSubjectToBuy.price} ج.م</span>
+              <h3 className="text-lg font-bold text-white">
+                {activationMode === "BUNDLE" ? "تفعيل عرض كل المواد" : "شحن وتفعيل مادة واحدة"}
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                {activationMode === "BUNDLE"
+                  ? `الباقة الكاملة لجميع مواد الترم (${termSubjects.length} مواد)`
+                  : selectedSubjectToBuy?.name || "مادة واحدة"}
+              </p>
+            </div>
+
+            {/* اختيار نوع الشحن: مادة واحدة (300 ج.م) أو عرض كل المواد (1200 ج.م) */}
+            <div className="grid grid-cols-2 gap-2 p-1.5 bg-slate-950 border border-slate-800 rounded-2xl mb-4 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  playCyberClick();
+                  setActivationMode("SINGLE");
+                  if (!selectedSubjectToBuy) {
+                    const fallback = termSubjects.find((s: any) => !s.isPurchased) || termSubjects[0];
+                    if (fallback) setSelectedSubjectToBuy(fallback);
+                  }
+                }}
+                className={`py-2.5 px-2 rounded-xl font-bold flex flex-col items-center justify-center gap-0.5 transition-all ${
+                  activationMode === "SINGLE"
+                    ? "bg-blue-600 text-white shadow"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <span>مادة واحدة</span>
+                <span className="font-mono text-[11px]">{selectedSubjectToBuy?.price || 300} ج.م</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  playCyberClick();
+                  setActivationMode("BUNDLE");
+                }}
+                className={`py-2.5 px-2 rounded-xl font-bold flex flex-col items-center justify-center gap-0.5 transition-all ${
+                  activationMode === "BUNDLE"
+                    ? "bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <span>🔥 عرض كل المواد</span>
+                <span className="font-mono text-[11px]">{BUNDLE_PRICE} ج.م</span>
+              </button>
+            </div>
+
+            <div className="text-center mb-4">
+              <div
+                className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full font-mono font-bold text-sm border ${
+                  activationMode === "BUNDLE"
+                    ? "bg-amber-500/15 border-amber-500/35 text-amber-300"
+                    : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                }`}
+              >
+                <span>المبلغ المطلوب تحويله:</span>
+                <span>
+                  {activationMode === "BUNDLE" ? BUNDLE_PRICE : selectedSubjectToBuy?.price || 300} ج.م
+                </span>
               </div>
             </div>
 
@@ -455,7 +577,7 @@ export default function StudentCoursesPage() {
                 <span>⚠️ تنبيه هـام:</span>
               </div>
               <div>
-                تفعيل الكورس يتم حصرياً ويدوياً عن طريق <span className="font-bold text-white">م/ أحمد</span> بعد تأكيد التحويل لضمان أمان حسابك.
+                التفعيل يتم يدوياً عن طريق <span className="font-bold text-white">م/ أحمد</span> فور تأكيد التحويل لضمان أمان حسابك.
               </div>
             </div>
 
@@ -515,20 +637,28 @@ export default function StudentCoursesPage() {
                   playCyberClick();
                   const studentName = data?.user?.name || "";
                   const studentPhone = data?.user?.phone || "";
-                  const msg = `السلام عليكم، تم تحويل رسوم كورس (${selectedSubjectToBuy.name}) على رقم (01002051553 - sobhy m) وأرغب في تفعيل الكورس على منصة هندسة.\nاسمي: ${studentName}\nرقم هاتفي: ${studentPhone}`;
+                  const msg =
+                    activationMode === "BUNDLE"
+                      ? `السلام عليكم، تم تحويل رسوم عرض كل المواد بالكامل (${BUNDLE_PRICE} ج.م) على رقم (01002051553 - sobhy m) وأرغب في تفعيل العرض لحسابي على منصة هندسة.\nاسمي: ${studentName}\nرقم هاتفي: ${studentPhone}`
+                      : `السلام عليكم، تم تحويل رسوم مادة واحدة (${selectedSubjectToBuy?.name || ""} - ${selectedSubjectToBuy?.price || 300} ج.م) على رقم (01002051553 - sobhy m) وأرغب في تفعيل المادة لحسابي على منصة هندسة.\nاسمي: ${studentName}\nرقم هاتفي: ${studentPhone}`;
                   const url = `https://wa.me/201002051553?text=${encodeURIComponent(msg)}`;
                   window.open(url, "_blank");
                 }}
                 className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all hover:scale-[1.02] active:scale-[0.98]"
               >
                 <MessageCircle className="w-4 h-4 fill-white" />
-                <span>إرسال إيصال التحويل عبر الواتساب لتفعيل الكورس</span>
+                <span>
+                  {activationMode === "BUNDLE"
+                    ? "إرسال إيصال عرض كل المواد (1200 ج.م)"
+                    : `إرسال إيصال المادة الواحدة (${selectedSubjectToBuy?.price || 300} ج.م)`}
+                </span>
               </button>
 
               <button
                 type="button"
                 onClick={() => {
                   playCyberClick();
+                  setIsActivationOpen(false);
                   setSelectedSubjectToBuy(null);
                 }}
                 className="w-full py-2.5 bg-slate-800/80 hover:bg-slate-800 text-slate-300 rounded-xl text-xs font-semibold transition-all"

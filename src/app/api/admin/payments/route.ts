@@ -42,7 +42,9 @@ export async function GET(req: NextRequest) {
         name: true,
         phone: true,
         email: true,
-        academicLevel: { select: { name: true } },
+        academicLevelId: true,
+        department: true,
+        academicLevel: { select: { id: true, name: true, slug: true } },
       },
       orderBy: { name: "asc" },
     });
@@ -56,6 +58,8 @@ export async function GET(req: NextRequest) {
         price: true,
         term: true,
         department: true,
+        academicLevelId: true,
+        academicLevel: { select: { name: true, slug: true } },
       },
       orderBy: [{ term: "asc" }, { order: "asc" }],
     });
@@ -67,16 +71,108 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// فتح مادة يدوياً للطالب (Manual Grant)
+// فتح مادة واحدة أو تفعيل عرض كل المواد (1200 ج.م) يدوياً للطالب
 export async function POST(req: NextRequest) {
   try {
     const { error } = await requireAdmin();
     if (error) return error;
 
     const body = await req.json();
-    const { userId, subjectId, adminNotes } = body;
+    const { userId, subjectId, subjectIds, term, action = "SINGLE_GRANT", adminNotes } = body;
 
-    if (!userId || !subjectId) {
+    if (!userId) {
+      return NextResponse.json({ error: "برجاء اختيار الطالب أولاً" }, { status: 400 });
+    }
+
+    if (action === "BUNDLE_GRANT") {
+      const student = await prisma.user.findUnique({
+        where: { id: userId },
+        include: { academicLevel: { select: { id: true, slug: true, name: true } } },
+      });
+      if (!student) {
+        return NextResponse.json({ error: "الطالب غير موجود" }, { status: 404 });
+      }
+
+      let targetSubjects: { id: string; name: string }[] = [];
+      if (Array.isArray(subjectIds) && subjectIds.length > 0) {
+        targetSubjects = await prisma.subject.findMany({
+          where: { id: { in: subjectIds }, isActive: true },
+          select: { id: true, name: true },
+          orderBy: [{ term: "asc" }, { order: "asc" }],
+        });
+      } else {
+        const isPrep = student.academicLevel?.slug === "prep";
+        const targetDept = isPrep ? "GENERAL" : student.department || null;
+        const whereClause: any = { isActive: true };
+        if (student.academicLevelId) {
+          whereClause.academicLevelId = student.academicLevelId;
+        }
+        if (term && term !== "ALL") {
+          whereClause.term = parseInt(String(term), 10) || 1;
+        }
+        if (targetDept) {
+          whereClause.OR = [
+            { department: targetDept },
+            { department: "GENERAL" },
+            { department: null },
+          ];
+        }
+        targetSubjects = await prisma.subject.findMany({
+          where: whereClause,
+          select: { id: true, name: true },
+          orderBy: [{ term: "asc" }, { order: "asc" }],
+        });
+      }
+
+      if (targetSubjects.length === 0) {
+        return NextResponse.json(
+          { error: "لا توجد مواد متاحة في فرقة وقسم هذا الطالب لتفعيل العرض." },
+          { status: 400 }
+        );
+      }
+
+      const ts = Date.now();
+      const noteText =
+        adminNotes?.trim() ||
+        `تفعيل عرض كل المواد (1200 ج.م) — ${targetSubjects.length} مواد`;
+
+      await prisma.$transaction(
+        targetSubjects.map((sub, idx) =>
+          prisma.purchase.upsert({
+            where: {
+              userId_subjectId: { userId, subjectId: sub.id },
+            },
+            update: {
+              status: "COMPLETED",
+              amount: idx === 0 ? 1200 : 0,
+              paymentMethod: "BUNDLE_GRANT",
+              paymentGateway: "MANUAL",
+              couponCode: "BUNDLE_1200",
+              adminNotes: noteText,
+            },
+            create: {
+              userId,
+              subjectId: sub.id,
+              amount: idx === 0 ? 1200 : 0,
+              status: "COMPLETED",
+              paymentMethod: "BUNDLE_GRANT",
+              paymentGateway: "MANUAL",
+              couponCode: "BUNDLE_1200",
+              transactionId: `BUNDLE_TX_${ts}_${idx}`,
+              adminNotes: noteText,
+            },
+          })
+        )
+      );
+
+      return NextResponse.json({
+        success: true,
+        unlockedCount: targetSubjects.length,
+        message: `تم تفعيل عرض كل المواد (${targetSubjects.length} مواد) للطالب بقيمة 1200 ج.م بنجاح!`,
+      });
+    }
+
+    if (!subjectId) {
       return NextResponse.json({ error: "برجاء اختيار الطالب والمادة" }, { status: 400 });
     }
 
@@ -89,9 +185,10 @@ export async function POST(req: NextRequest) {
       },
       update: {
         status: "COMPLETED",
+        amount: subject.price,
         paymentMethod: "MANUAL_GRANT",
         paymentGateway: "MANUAL",
-        adminNotes: adminNotes || "فتح يدوي من الأدمن",
+        adminNotes: adminNotes || "فتح مادة واحدة يدوياً من الأدمن",
       },
       create: {
         userId,
@@ -101,7 +198,7 @@ export async function POST(req: NextRequest) {
         paymentMethod: "MANUAL_GRANT",
         paymentGateway: "MANUAL",
         transactionId: "MANUAL_TX_" + Date.now(),
-        adminNotes: adminNotes || "فتح يدوي من الأدمن",
+        adminNotes: adminNotes || "فتح مادة واحدة يدوياً من الأدمن",
       },
     });
 
