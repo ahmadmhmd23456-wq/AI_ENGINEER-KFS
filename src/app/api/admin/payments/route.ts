@@ -64,7 +64,158 @@ export async function GET(req: NextRequest) {
       orderBy: [{ term: "asc" }, { order: "asc" }],
     });
 
-    return NextResponse.json({ purchases, students, subjects });
+    const allCompleted = await prisma.purchase.findMany({
+      where: {
+        status: "COMPLETED",
+        user: { role: "STUDENT" },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            email: true,
+            department: true,
+            academicLevel: { select: { name: true } },
+          },
+        },
+        subject: {
+          select: { id: true, name: true, code: true, term: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    type StudentAnalyticsBucket = {
+      user: {
+        id: string;
+        name: string;
+        phone: string | null;
+        email: string;
+        department: string | null;
+        academicLevelName: string | null;
+      };
+      bundleSubjects: { id: string; name: string; code: string | null; term: number }[];
+      singleSubjects: {
+        id: string;
+        name: string;
+        code: string | null;
+        term: number;
+        amount: number;
+        paymentMethod: string;
+        createdAt: Date;
+      }[];
+      bundlePaid: number;
+      singlePaid: number;
+      latestAt: Date;
+    };
+
+    const byStudent = new Map<string, StudentAnalyticsBucket>();
+    for (const p of allCompleted) {
+      if (!p.user || !p.subject) continue;
+      let bucket = byStudent.get(p.userId);
+      if (!bucket) {
+        bucket = {
+          user: {
+            id: p.user.id,
+            name: p.user.name,
+            phone: p.user.phone,
+            email: p.user.email,
+            department: p.user.department,
+            academicLevelName: p.user.academicLevel?.name || null,
+          },
+          bundleSubjects: [],
+          singleSubjects: [],
+          bundlePaid: 0,
+          singlePaid: 0,
+          latestAt: p.createdAt,
+        };
+        byStudent.set(p.userId, bucket);
+      }
+
+      if (p.createdAt > bucket.latestAt) {
+        bucket.latestAt = p.createdAt;
+      }
+
+      const isBundle = p.paymentMethod === "BUNDLE_GRANT" || p.couponCode === "BUNDLE_1200";
+      if (isBundle) {
+        bucket.bundleSubjects.push({
+          id: p.subject.id,
+          name: p.subject.name,
+          code: p.subject.code,
+          term: p.subject.term,
+        });
+        bucket.bundlePaid += Number(p.amount) || 0;
+      } else {
+        bucket.singleSubjects.push({
+          id: p.subject.id,
+          name: p.subject.name,
+          code: p.subject.code,
+          term: p.subject.term,
+          amount: Number(p.amount) || 0,
+          paymentMethod: p.paymentMethod,
+          createdAt: p.createdAt,
+        });
+        bucket.singlePaid += Number(p.amount) || 0;
+      }
+    }
+
+    const bundleSubscribers: any[] = [];
+    const singleSubscribers: any[] = [];
+    const singleSubjectMap = new Map<
+      string,
+      { id: string; name: string; code: string | null; count: number }
+    >();
+
+    for (const bucket of byStudent.values()) {
+      if (bucket.bundleSubjects.length > 0) {
+        bundleSubscribers.push({
+          user: bucket.user,
+          subjects: bucket.bundleSubjects,
+          extraSingleSubjects: bucket.singleSubjects,
+          totalPaid: bucket.bundlePaid + bucket.singlePaid,
+          latestAt: bucket.latestAt,
+        });
+      } else if (bucket.singleSubjects.length > 0) {
+        singleSubscribers.push({
+          user: bucket.user,
+          subjects: bucket.singleSubjects,
+          totalPaid: bucket.singlePaid,
+          latestAt: bucket.latestAt,
+        });
+        for (const sub of bucket.singleSubjects) {
+          const cur = singleSubjectMap.get(sub.id) || {
+            id: sub.id,
+            name: sub.name,
+            code: sub.code,
+            count: 0,
+          };
+          cur.count += 1;
+          singleSubjectMap.set(sub.id, cur);
+        }
+      }
+    }
+
+    const subjectSingleCounts = Array.from(singleSubjectMap.values()).sort(
+      (a, b) => b.count - a.count
+    );
+
+    const analytics = {
+      bundleSubscribersCount: bundleSubscribers.length,
+      singleSubscribersCount: singleSubscribers.length,
+      totalSingleSubjectsCount: singleSubscribers.reduce(
+        (sum, item) => sum + item.subjects.length,
+        0
+      ),
+      bundleRevenue: bundleSubscribers.reduce((sum, item) => sum + item.totalPaid, 0),
+      singleRevenue: singleSubscribers.reduce((sum, item) => sum + item.totalPaid, 0),
+      bundleSubscribers,
+      singleSubscribers,
+      subjectSingleCounts,
+    };
+
+    return NextResponse.json({ purchases, students, subjects, analytics });
   } catch (error) {
     console.error("Admin Payments GET Error:", error);
     return NextResponse.json({ error: "فشل تحميل المدفوعات" }, { status: 500 });

@@ -11,6 +11,7 @@ import {
   Check,
   Sparkles,
   Layers,
+  Users,
 } from "lucide-react";
 
 const DEPT_LABELS: Record<string, string> = {
@@ -25,6 +26,10 @@ export default function AdminPaymentsPage() {
   const [purchases, setPurchases] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
+  const [analytics, setAnalytics] = useState<any>(null);
+  const [activeViewTab, setActiveViewTab] = useState<
+    "TRANSACTIONS" | "BUNDLE_SUBSCRIBERS" | "SINGLE_SUBSCRIBERS"
+  >("TRANSACTIONS");
   const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState("");
@@ -56,6 +61,7 @@ export default function AdminPaymentsPage() {
         setPurchases(data.purchases || []);
         setStudents(data.students || []);
         setSubjects(data.subjects || []);
+        setAnalytics(data.analytics || null);
         if (data.students?.length > 0 && !selectedUserId) setSelectedUserId(data.students[0].id);
         if (data.subjects?.length > 0 && !selectedSubjectId) setSelectedSubjectId(data.subjects[0].id);
         setLoading(false);
@@ -264,37 +270,311 @@ export default function AdminPaymentsPage() {
         </div>
       </div>
 
-      {/* شريط الفلاتر والبحث */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row gap-4 items-center justify-between">
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+      {/* إحصائيات سريعة: كام واحد مشترك في العرض vs كام واحد مفعل مواد بدون عرض */}
+      <div className="space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <button
+            type="button"
+            onClick={() => setActiveViewTab("BUNDLE_SUBSCRIBERS")}
+            className={`text-right p-4 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
+              activeViewTab === "BUNDLE_SUBSCRIBERS"
+                ? "bg-amber-500/15 border-amber-400 shadow-lg shadow-amber-900/20"
+                : "bg-slate-900/80 border-slate-800 hover:border-amber-500/40"
+            }`}
           >
-            <option value="">جميع الحالات</option>
-            <option value="COMPLETED">مكتمل (ناجح)</option>
-            <option value="PENDING">معلق</option>
-            <option value="FAILED">فشل</option>
-            <option value="REFUNDED">مسترجع</option>
-          </select>
+            <div className="space-y-1">
+              <div className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4" />
+                <span>مشتركي العرض (1200 ج.م)</span>
+              </div>
+              <div className="text-2xl font-extrabold font-mono text-white">
+                {analytics?.bundleSubscribersCount ?? 0}{" "}
+                <span className="text-xs font-normal text-slate-400">طالب</span>
+              </div>
+              <div className="text-[11px] text-slate-400">
+                إجمالي الإيراد:{" "}
+                <span className="font-mono font-bold text-amber-300">
+                  {analytics?.bundleRevenue ?? 0} ج.م
+                </span>
+              </div>
+            </div>
+            <span className="px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[11px] font-bold">
+              عرض التفاصيل
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveViewTab("SINGLE_SUBSCRIBERS")}
+            className={`text-right p-4 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
+              activeViewTab === "SINGLE_SUBSCRIBERS"
+                ? "bg-blue-600/20 border-blue-400 shadow-lg shadow-blue-900/20"
+                : "bg-slate-900/80 border-slate-800 hover:border-blue-500/40"
+            }`}
+          >
+            <div className="space-y-1">
+              <div className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
+                <Users className="w-4 h-4" />
+                <span>مفعلين مواد بدون عرض</span>
+              </div>
+              <div className="text-2xl font-extrabold font-mono text-white">
+                {analytics?.singleSubscribersCount ?? 0}{" "}
+                <span className="text-xs font-normal text-slate-400">طالب</span>
+              </div>
+              <div className="text-[11px] text-slate-400">
+                إجمالي المواد المفعلة فردياً:{" "}
+                <span className="font-mono font-bold text-emerald-400">
+                  {analytics?.totalSingleSubjectsCount ?? 0} مادة
+                </span>
+                {" • "}
+                <span className="font-mono text-slate-300">{analytics?.singleRevenue ?? 0} ج.م</span>
+              </div>
+            </div>
+            <span className="px-3 py-1.5 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-300 text-[11px] font-bold">
+              عرض الطلاب والمواد
+            </span>
+          </button>
         </div>
 
-        <div className="relative w-full md:w-80">
+        {analytics?.subjectSingleCounts?.length > 0 && (
+          <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-3.5 space-y-2">
+            <div className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+              <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
+              <span>تفصيل المواد المفعلة خارج العرض ({analytics.subjectSingleCounts.length} مواد):</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {analytics.subjectSingleCounts.map((item: any) => (
+                <span
+                  key={item.id}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-slate-200"
+                >
+                  <span className="font-bold">{item.name}</span>
+                  <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 font-mono text-[10px] font-bold">
+                    {item.count} طالب
+                  </span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* تبويبات العرض + شريط الفلاتر والبحث */}
+      <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col lg:flex-row gap-4 items-stretch lg:items-center justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveViewTab("TRANSACTIONS")}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+              activeViewTab === "TRANSACTIONS"
+                ? "bg-blue-600 text-white shadow"
+                : "bg-slate-950 text-slate-400 hover:text-white border border-slate-800"
+            }`}
+          >
+            سجل المعاملات ({purchases.length})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveViewTab("BUNDLE_SUBSCRIBERS")}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+              activeViewTab === "BUNDLE_SUBSCRIBERS"
+                ? "bg-amber-500 text-slate-950 shadow"
+                : "bg-slate-950 text-slate-400 hover:text-white border border-slate-800"
+            }`}
+          >
+            مشتركي العرض ({analytics?.bundleSubscribersCount ?? 0})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveViewTab("SINGLE_SUBSCRIBERS")}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+              activeViewTab === "SINGLE_SUBSCRIBERS"
+                ? "bg-emerald-600 text-white shadow"
+                : "bg-slate-950 text-slate-400 hover:text-white border border-slate-800"
+            }`}
+          >
+            مفعلين مواد بدون عرض ({analytics?.singleSubscribersCount ?? 0})
+          </button>
+
+          {activeViewTab === "TRANSACTIONS" && (
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+            >
+              <option value="">جميع الحالات</option>
+              <option value="COMPLETED">مكتمل (ناجح)</option>
+              <option value="PENDING">معلق</option>
+              <option value="FAILED">فشل</option>
+              <option value="REFUNDED">مسترجع</option>
+            </select>
+          )}
+        </div>
+
+        <div className="relative w-full lg:w-80">
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="بحث بالاسم أو رقم الهاتف أو المعاملة..."
+            placeholder="بحث بالاسم أو رقم الهاتف أو المادة..."
             className="w-full py-2 pr-9 pl-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
           />
           <Search className="w-4 h-4 text-slate-500 absolute top-2.5 right-3" />
         </div>
       </div>
 
-      {/* جدول المعاملات */}
+      {/* عرض المحتوى حسب التبويب المختار */}
       {loading ? (
         <div className="text-center py-12 text-slate-400 text-xs">جاري جلب الفواتير والاشتراكات...</div>
+      ) : activeViewTab === "BUNDLE_SUBSCRIBERS" ? (
+        (() => {
+          const list = (analytics?.bundleSubscribers || []).filter((item: any) => {
+            if (!search.trim()) return true;
+            const term = normalizeArabic(search);
+            return (
+              normalizeArabic(item.user?.name).includes(term) ||
+              (item.user?.phone || "").toLowerCase().includes(term) ||
+              (item.subjects || []).some((s: any) => normalizeArabic(s.name).includes(term))
+            );
+          });
+
+          if (list.length === 0) {
+            return (
+              <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-12 text-center">
+                <Sparkles className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+                <h3 className="text-sm font-bold text-white mb-1">لا يوجد طلاب مشتركين في العرض حالياً</h3>
+                <p className="text-xs text-slate-400">
+                  يمكنك تفعيل عرض كل المواد (1200 ج.م) لأي طالب من الزر البرتقالي بالأعلى.
+                </p>
+              </div>
+            );
+          }
+
+          return (
+            <div className="space-y-3">
+              {list.map((item: any) => (
+                <div
+                  key={item.user.id}
+                  className="bg-slate-900/85 border border-amber-500/30 rounded-2xl p-4 space-y-3 shadow-lg"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="font-bold text-sm text-white">{item.user.name}</div>
+                      <div className="text-[11px] text-slate-400 flex flex-wrap items-center gap-2 mt-0.5">
+                        <span dir="ltr" className="font-mono">{item.user.phone || item.user.email}</span>
+                        <span>•</span>
+                        <span className="text-blue-300">{item.user.academicLevelName || "غير محدد"}</span>
+                        {item.user.department && (
+                          <>
+                            <span>•</span>
+                            <span className="text-indigo-300">
+                              {DEPT_LABELS[item.user.department] || item.user.department}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/35 text-amber-300 text-xs font-mono font-bold">
+                        {item.totalPaid} ج.م ({item.subjects.length} مواد بالعرض)
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        {new Date(item.latestAt).toLocaleDateString("ar-EG")}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-800/80">
+                    {item.subjects.map((sub: any) => (
+                      <span
+                        key={sub.id}
+                        className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[11px] text-emerald-300 font-medium"
+                      >
+                        ✓ {sub.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()
+      ) : activeViewTab === "SINGLE_SUBSCRIBERS" ? (
+        (() => {
+          const list = (analytics?.singleSubscribers || []).filter((item: any) => {
+            if (!search.trim()) return true;
+            const term = normalizeArabic(search);
+            return (
+              normalizeArabic(item.user?.name).includes(term) ||
+              (item.user?.phone || "").toLowerCase().includes(term) ||
+              (item.subjects || []).some((s: any) => normalizeArabic(s.name).includes(term))
+            );
+          });
+
+          if (list.length === 0) {
+            return (
+              <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-12 text-center">
+                <BookOpen className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+                <h3 className="text-sm font-bold text-white mb-1">لا يوجد طلاب مفعلين لمواد فردية بدون عرض</h3>
+              </div>
+            );
+          }
+
+          return (
+            <div className="space-y-3">
+              {list.map((item: any) => (
+                <div
+                  key={item.user.id}
+                  className="bg-slate-900/85 border border-blue-500/30 rounded-2xl p-4 space-y-3 shadow-lg"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="font-bold text-sm text-white">{item.user.name}</div>
+                      <div className="text-[11px] text-slate-400 flex flex-wrap items-center gap-2 mt-0.5">
+                        <span dir="ltr" className="font-mono">{item.user.phone || item.user.email}</span>
+                        <span>•</span>
+                        <span className="text-blue-300">{item.user.academicLevelName || "غير محدد"}</span>
+                        {item.user.department && (
+                          <>
+                            <span>•</span>
+                            <span className="text-indigo-300">
+                              {DEPT_LABELS[item.user.department] || item.user.department}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-300 text-xs font-mono font-bold">
+                        {item.subjects.length} مادة ({item.totalPaid} ج.م)
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        {new Date(item.latestAt).toLocaleDateString("ar-EG")}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-800/80">
+                    <span className="text-[11px] text-slate-400 ml-1">المواد المفعلة:</span>
+                    {item.subjects.map((sub: any) => (
+                      <span
+                        key={sub.id}
+                        className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[11px] text-blue-300 font-medium flex items-center gap-1"
+                      >
+                        <span>📘 {sub.name}</span>
+                        <span className="text-[10px] font-mono text-emerald-400">({sub.amount} ج.م)</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()
       ) : purchases.length === 0 ? (
         <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-12 text-center">
           <CreditCard className="w-12 h-12 text-slate-600 mx-auto mb-3" />
