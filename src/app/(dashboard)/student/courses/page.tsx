@@ -128,10 +128,8 @@ export default function StudentCoursesPage() {
   const [loading, setLoading] = useState(true);
   const [currentTerm, setCurrentTerm] = useState<1 | 2>(1);
 
-  // حالة اختيار وتصفية القسم الهندسي
+  // القسم المعين للطالب من قاعدة البيانات (يُعدّل فقط من خلال الأدمن)
   const [selectedDept, setSelectedDept] = useState<string>("ALL");
-  const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
-  const [isSavingDept, setIsSavingDept] = useState(false);
 
   // حالة مودال طلب تفعيل الكورس
   const [selectedSubjectToBuy, setSelectedSubjectToBuy] = useState<any | null>(null);
@@ -157,28 +155,17 @@ export default function StudentCoursesPage() {
     },
   };
 
-  const fetchCourses = (deptToFetch?: string) => {
+  const fetchCourses = () => {
     setLoading(true);
-    const activeDept = deptToFetch !== undefined ? deptToFetch : selectedDept;
-    let url = "/api/student/courses";
-    if (activeDept && activeDept !== "ALL") {
-      url += `?department=${activeDept}`;
-    }
-
-    fetch(url)
+    fetch("/api/student/courses")
       .then((res) => res.json())
       .then((json) => {
         setData(json);
         const isPrepUser = json?.user?.academicLevel?.slug === "prep";
-        const userDept = isPrepUser
+        const assignedDept = isPrepUser
           ? "GENERAL"
-          : deptToFetch || json?.user?.department || localStorage.getItem("student_selected_dept");
-        if (userDept) {
-          setSelectedDept(userDept);
-        } else {
-          // فتح نافذة اختيار القسم تلقائياً إذا لم يكن الطالب قد حدد قسماً بعد
-          setIsDeptModalOpen(true);
-        }
+          : json?.user?.department || "ALL";
+        setSelectedDept(assignedDept);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -188,36 +175,12 @@ export default function StudentCoursesPage() {
     fetchCourses();
   }, []);
 
-  // اختيار وحفظ القسم الهندسي وتحديث قائمة المقررات فوراً
-  const handleSelectDepartment = async (deptId: string) => {
-    setIsSavingDept(true);
-    playCyberClick();
-    setSelectedDept(deptId);
-    localStorage.setItem("student_selected_dept", deptId);
-
-    try {
-      await fetch("/api/student/department", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ department: deptId }),
-      });
-      playSuccessChime();
-      fetchCourses(deptId);
-    } catch {
-      // حفظ محلي في حال تعذر الشبكة
-      fetchCourses(deptId);
-    } finally {
-      setIsSavingDept(false);
-      setIsDeptModalOpen(false);
-    }
-  };
-
   if (loading && !data) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="flex flex-col items-center gap-3">
           <RefreshCw className="w-8 h-8 text-blue-500 animate-spin" />
-          <p className="text-xs text-slate-400">جاري تحميل موادك الدراسية وأقسامك الهندسية...</p>
+          <p className="text-xs text-slate-400">جاري تحميل موادك الدراسية...</p>
         </div>
       </div>
     );
@@ -225,7 +188,7 @@ export default function StudentCoursesPage() {
 
   const { user, subjects } = data || {};
 
-  // فلترة المواد حسب الترم والقسم المختار، وترتيبها وفق الترتيب المحدد من قبل الأدمن
+  // فلترة المواد حسب الترم والقسم المسجل، وترتيبها وفق الترتيب المحدد من قبل الأدمن
   const termSubjects = (subjects || [])
     .filter((s: any) => {
       const matchTerm = s.term === currentTerm;
@@ -236,7 +199,6 @@ export default function StudentCoursesPage() {
     })
     .sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0));
 
-  const currentDeptInfo = DEPARTMENTS.find((d) => d.id === selectedDept);
   const isPrepUser = user?.academicLevel?.slug === "prep";
   const activeDeptSchedule =
     !isPrepUser &&
@@ -247,7 +209,7 @@ export default function StudentCoursesPage() {
 
   return (
     <div className="space-y-6" dir="rtl">
-      {/* بطاقة ترحيبية ومعلومات الدفعة والقسم */}
+      {/* بطاقة ترحيبية ومعلومات الدفعة */}
       <div className="eng-scroll-item fox-scroll-item bg-gradient-to-r from-blue-950/60 via-indigo-950/40 to-slate-900 border border-blue-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
           <div className="space-y-2">
@@ -256,39 +218,6 @@ export default function StudentCoursesPage() {
                 <GraduationCap className="w-4 h-4" />
                 <span>{user?.academicLevel?.name || "إعدادي هندسة"}</span>
               </span>
-
-              {/* بادج القسم المختار مع زر تغييره */}
-              {isPrepUser ? (
-                <div className="px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 bg-emerald-500/15 text-emerald-300 border-emerald-500/30">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>شعبة عامة (إعدادي)</span>
-                </div>
-              ) : currentDeptInfo ? (
-                <div className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 ${currentDeptInfo.tagClass}`}>
-                  {React.createElement(currentDeptInfo.icon, { className: "w-3.5 h-3.5" })}
-                  <span>قسم {currentDeptInfo.shortName}</span>
-                </div>
-              ) : (
-                <span className="px-3 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/30 rounded-full text-xs font-bold flex items-center gap-1.5 animate-pulse">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>لم يتم تحديد القسم</span>
-                </span>
-              )}
-
-              {!isPrepUser && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    playCyberClick();
-                    setIsDeptModalOpen(true);
-                  }}
-                  onMouseEnter={playCyberHover}
-                  className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 rounded-full text-[11px] font-medium flex items-center gap-1 transition-all"
-                >
-                  <Settings2 className="w-3 h-3 text-blue-400" />
-                  <span>{currentDeptInfo ? "تغيير القسم" : "اختيار القسم الآن"}</span>
-                </button>
-              )}
             </div>
 
             <h1 className="text-xl sm:text-2xl font-bold text-white">
@@ -297,9 +226,7 @@ export default function StudentCoursesPage() {
             <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
               {isPrepUser
                 ? "مقررات وتدريبات الفرقة الإعدادية العامة. يمكنك الدخول لأي مادة لمتابعة المحاضرات والشيتات وبنوك الأسئلة."
-                : currentDeptInfo
-                ? `مقررات وتدريبات ${currentDeptInfo.name}. يمكنك الدخول لأي مادة لمتابعة المحاضرات والشيتات وبنوك الأسئلة.`
-                : "يرجى تحديد قسمك الهندسي لعرض المقررات المتخصصة وفقاً لتخصصك الأكاديمي."}
+                : "مقرراتك وتدريباتك الدراسية المسجلة. يمكنك الدخول لأي مادة لمتابعة المحاضرات والشيتات وبنوك الأسئلة، أو مراجعة بيانات قسمك من صفحة حسابي."}
             </p>
           </div>
 
@@ -333,70 +260,13 @@ export default function StudentCoursesPage() {
         </div>
       </div>
 
-      {/* شريط اختيار وتبديل الأقسام الهندسية التفاعلي */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Layers className="w-4 h-4 text-blue-400" />
-            <h2 className="text-xs font-bold text-slate-300 uppercase tracking-wider font-mono">
-              الأقسام والتخصصات الهندسية:
-            </h2>
-          </div>
-          <span className="text-[11px] text-slate-500 font-mono">اضغط على أي قسم لمعاينة مواده</span>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {DEPARTMENTS.map((dept) => {
-            const isSelected = selectedDept === dept.id;
-            const Icon = dept.icon;
-            return (
-              <button
-                key={dept.id}
-                type="button"
-                onClick={() => handleSelectDepartment(dept.id)}
-                onMouseEnter={playCyberHover}
-                className={`p-3.5 rounded-2xl border text-right transition-all flex flex-col justify-between gap-2.5 relative overflow-hidden group hover:scale-[1.02] active:scale-[0.98] ${
-                  isSelected
-                    ? `bg-slate-900/95 ${dept.border} shadow-lg ${dept.glow}`
-                    : "bg-slate-950/60 border-slate-800/80 hover:border-slate-700"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div
-                    className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all ${
-                      isSelected
-                        ? `${dept.tagClass} shadow-md`
-                        : "bg-slate-900 border-slate-800 text-slate-400 group-hover:text-white"
-                    }`}
-                  >
-                    <Icon className="w-5 h-5" />
-                  </div>
-                  {isSelected && (
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  )}
-                </div>
-
-                <div>
-                  <div className={`text-xs font-bold transition-colors ${isSelected ? dept.textCol : "text-slate-200 group-hover:text-white"}`}>
-                    {dept.shortName}
-                  </div>
-                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                    {dept.badge}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* قائمة المواد للمواد المشتركة وتخصص القسم */}
+      {/* قائمة المواد الدراسية */}
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
           <div className="flex items-center gap-2">
             <BookOpen className="w-4 h-4 text-blue-400" />
             <h3 className="text-sm font-bold text-white">
-              المقررات الدراسية {currentDeptInfo ? `- قسم ${currentDeptInfo.shortName}` : ""}
+              المقررات الدراسية
             </h3>
           </div>
           <div className="flex items-center gap-2.5">
@@ -549,91 +419,6 @@ export default function StudentCoursesPage() {
           );
         })}
       </div>
-
-      {/* نافذة مودال اختيار القسم الهندسي (Department Selection Modal) */}
-      {isDeptModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md anim-video-modal">
-          <div className="bg-slate-900 border border-slate-700/80 rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl relative overflow-hidden" dir="rtl">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
-
-            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-blue-600/20 border border-blue-500/30 text-blue-400 flex items-center justify-center">
-                  <GraduationCap className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base sm:text-lg font-bold text-white">اختر قسمك الهندسي</h3>
-                  <p className="text-xs text-slate-400">حدد تخصصك لعرض المواد والمحاضرات والامتحانات المناسبة لك</p>
-                </div>
-              </div>
-
-              {selectedDept !== "ALL" && (
-                <button
-                  type="button"
-                  onClick={() => setIsDeptModalOpen(false)}
-                  className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-all"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-
-            {/* كروت الأقسام الـ 4 التفاعلية */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 my-6">
-              {DEPARTMENTS.map((dept) => {
-                const isSelected = selectedDept === dept.id;
-                const Icon = dept.icon;
-                return (
-                  <div
-                    key={dept.id}
-                    onClick={() => handleSelectDepartment(dept.id)}
-                    onMouseEnter={playCyberHover}
-                    className={`p-4 rounded-2xl border text-right cursor-pointer transition-all flex flex-col justify-between gap-3 relative overflow-hidden group hover:scale-[1.02] active:scale-[0.99] ${
-                      isSelected
-                        ? `bg-slate-950 ${dept.border} shadow-xl ${dept.glow}`
-                        : "bg-slate-950/70 border-slate-800/80 hover:border-slate-700"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${dept.tagClass}`}>
-                        <Icon className="w-5 h-5" />
-                      </div>
-                      <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${dept.tagClass}`}>
-                        {dept.badge}
-                      </span>
-                    </div>
-
-                    <div>
-                      <h4 className={`text-sm font-bold ${isSelected ? dept.textCol : "text-white group-hover:text-blue-400"} transition-colors`}>
-                        {dept.name}
-                      </h4>
-                      <p className="text-[11px] text-slate-400 leading-relaxed mt-1">
-                        {dept.description}
-                      </p>
-                    </div>
-
-                    <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
-                      <span className="text-slate-500 font-mono">
-                        {dept.focusTopics[0]} • {dept.focusTopics[1]}
-                      </span>
-                      <span className={`font-bold flex items-center gap-1 ${dept.textCol}`}>
-                        <span>اختيار</span>
-                        <ArrowLeft className="w-3 h-3" />
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="text-center">
-              <p className="text-xs text-slate-500 font-mono">
-                يمكنك تغيير القسم في أي وقت من أعلى الصفحة بكل سهولة.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* مودال طلب تفعيل الكورس يدوياً عن طريق الأدمن م/ أحمد */}
       {selectedSubjectToBuy && (

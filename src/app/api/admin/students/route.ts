@@ -94,6 +94,7 @@ export async function POST(req: NextRequest) {
       newEmail,
       newPassword,
       academicLevelId,
+      department,
       subjectId,
       grant,
       deviceId,
@@ -206,7 +207,36 @@ export async function POST(req: NextRequest) {
         data: { status: newStatus },
       });
     }
-    // 7. تغيير الدفعة الأكاديمية
+    // 7. تغيير الدفعة الأكاديمية والقسم الهندسي (للأدمن فقط)
+    else if (action === "UPDATE_LEVEL_AND_DEPARTMENT") {
+      const allowedDepts = ["GENERAL", "AI", "MECHATRONICS", "ARCHITECTURE", "CIVIL"];
+      const updateData: any = {};
+
+      if (academicLevelId) {
+        const lvl = await prisma.academicLevel.findUnique({
+          where: { id: academicLevelId },
+          select: { id: true, slug: true },
+        });
+        if (!lvl) {
+          return NextResponse.json({ error: "الفرقة الدراسية غير صالحة" }, { status: 400 });
+        }
+        updateData.academicLevelId = lvl.id;
+        if (lvl.slug === "prep") {
+          updateData.department = "GENERAL";
+        }
+      }
+
+      if (department && allowedDepts.includes(department) && !updateData.department) {
+        updateData.department = department;
+      }
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: updateData,
+      });
+      return NextResponse.json({ success: true, message: "تم تحديث الفرقة والقسم الهندسي للطالب بنجاح" });
+    }
+    // 8. تغيير الدفعة الأكاديمية فقط
     else if (action === "CHANGE_LEVEL" && academicLevelId) {
       await prisma.user.update({
         where: { id: userId },

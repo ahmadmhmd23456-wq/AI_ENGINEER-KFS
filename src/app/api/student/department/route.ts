@@ -86,29 +86,37 @@ export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
     const userId = (session?.user as any)?.id;
+    const role = (session?.user as any)?.role;
 
     if (!userId) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { department } = body;
+    if (role !== "ADMIN") {
+      return NextResponse.json(
+        { error: "غير مسموح — لا يمكن تغيير القسم الهندسي إلا من خلال الأدمن." },
+        { status: 403 }
+      );
+    }
 
-    const validDept = DEPARTMENTS.find(d => d.id === department);
-    if (!validDept) {
+    const body = await req.json();
+    const { department, targetUserId } = body;
+
+    const allowedDepts = [...DEPARTMENTS.map((d) => d.id), "GENERAL"];
+    if (!allowedDepts.includes(department)) {
       return NextResponse.json({ error: "القسم المحدد غير صالح" }, { status: 400 });
     }
 
     const updatedUser = await prisma.user.update({
-      where: { id: userId },
-      data: { department: validDept.id },
+      where: { id: targetUserId || userId },
+      data: { department },
       select: { id: true, department: true }
     });
 
     return NextResponse.json({
       success: true,
       department: updatedUser.department,
-      departmentInfo: validDept
+      departmentInfo: DEPARTMENTS.find((d) => d.id === department) || null
     });
   } catch (error) {
     console.error("Department POST error:", error);

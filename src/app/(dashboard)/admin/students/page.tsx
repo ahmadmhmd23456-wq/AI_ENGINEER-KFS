@@ -71,6 +71,11 @@ export default function AdminStudentsPage() {
   const [selectedStudentForEmail, setSelectedStudentForEmail] = useState<any | null>(null);
   const [newEmail, setNewEmail] = useState("");
 
+  // مودال تعديل الفرقة والقسم الهندسي
+  const [selectedStudentForAcademic, setSelectedStudentForAcademic] = useState<any | null>(null);
+  const [editLevelId, setEditLevelId] = useState("");
+  const [editDepartment, setEditDepartment] = useState("GENERAL");
+
   // مودال تعيين كلمة المرور
   const [selectedStudentForPassword, setSelectedStudentForPassword] = useState<any | null>(null);
   const [newStudentPassword, setNewStudentPassword] = useState("");
@@ -312,6 +317,37 @@ export default function AdminStudentsPage() {
     }
   };
 
+  // حفظ تعديل الفرقة والقسم الهندسي للطالب
+  const handleUpdateAcademic = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedStudentForAcademic || !editLevelId) return;
+
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/admin/students", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: selectedStudentForAcademic.id,
+          action: "UPDATE_LEVEL_AND_DEPARTMENT",
+          academicLevelId: editLevelId,
+          department: editDepartment,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSelectedStudentForAcademic(null);
+        fetchStudents();
+      } else {
+        alert(data.error || "فشل تحديث الفرقة والقسم");
+      }
+    } catch {
+      alert("حدث خطأ أثناء الاتصال بالخادم");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-6" dir="rtl">
       {/* الترويسة */}
@@ -430,12 +466,26 @@ export default function AdminStudentsPage() {
                       </span>
                     </td>
                     <td className="py-3 px-4 text-blue-400 font-medium">
-                      <div>{student.academicLevel?.name || "غير محدد"}</div>
-                      {student.department && (
-                        <span className="text-[10px] text-indigo-300 font-medium">
-                          {DEPT_LABELS[student.department] || student.department}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedStudentForAcademic(student);
+                          setEditLevelId(student.academicLevelId || levels[0]?.id || "");
+                          setEditDepartment(student.department || "GENERAL");
+                        }}
+                        className="text-right group hover:bg-slate-800/60 p-1.5 rounded-xl border border-transparent hover:border-slate-700 transition-all"
+                        title="انقر لتعديل الفرقة أو القسم الهندسي للطالب"
+                      >
+                        <div className="flex items-center gap-1">
+                          <span>{student.academicLevel?.name || "غير محدد"}</span>
+                          <Edit2 className="w-3 h-3 text-slate-500 group-hover:text-blue-400" />
+                        </div>
+                        <span className="text-[10px] text-indigo-300 font-medium block">
+                          {student.department
+                            ? DEPT_LABELS[student.department] || student.department
+                            : "لم يُحدد قسم"}
                         </span>
-                      )}
+                      </button>
                     </td>
                     <td className="py-3 px-4 font-mono text-slate-300" dir="ltr">
                       {student.phone || "بدون رقم"}
@@ -1071,6 +1121,90 @@ export default function AdminStudentsPage() {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 5. مودال تعديل الفرقة والقسم الهندسي (الأدمن فقط) */}
+      {selectedStudentForAcademic && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative">
+            <button
+              onClick={() => setSelectedStudentForAcademic(null)}
+              className="absolute top-5 left-5 text-slate-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 flex items-center justify-center">
+                <GraduationCap className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">تعديل الفرقة والقسم الهندسي</h3>
+                <p className="text-xs text-slate-400">
+                  للطالب: <span className="text-white font-bold">{selectedStudentForAcademic.name}</span>
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleUpdateAcademic} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">الفرقة الدراسية:</label>
+                <select
+                  value={editLevelId}
+                  onChange={(e) => {
+                    const nextId = e.target.value;
+                    setEditLevelId(nextId);
+                    const lvl = levels.find((l) => l.id === nextId);
+                    if (lvl?.slug === "prep") {
+                      setEditDepartment("GENERAL");
+                    }
+                  }}
+                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                >
+                  {levels.map((lvl) => (
+                    <option key={lvl.id} value={lvl.id}>
+                      {lvl.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {levels.find((l) => l.id === editLevelId)?.slug !== "prep" && (
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">القسم الهندسي:</label>
+                  <select
+                    value={editDepartment}
+                    onChange={(e) => setEditDepartment(e.target.value)}
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="AI">ذكاء اصطناعي (AI)</option>
+                    <option value="MECHATRONICS">ميكاترونكس</option>
+                    <option value="ARCHITECTURE">هندسة معمارية</option>
+                    <option value="CIVIL">هندسة مدنية / إنشائية</option>
+                    <option value="GENERAL">مواد عامة</option>
+                  </select>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setSelectedStudentForAcademic(null)}
+                  className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-medium"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold disabled:opacity-50"
+                >
+                  {submitting ? "جاري الحفظ..." : "حفظ التعديل"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

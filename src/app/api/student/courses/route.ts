@@ -30,7 +30,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "المستخدم غير موجود" }, { status: 404 });
     }
 
-    const targetDept = queryDept || user.department || null;
+    const isAdmin = user.role === "ADMIN";
+    const isPrep = user.academicLevel?.slug === "prep";
+    const targetDept = isAdmin
+      ? queryDept || user.department || null
+      : isPrep
+      ? "GENERAL"
+      : user.department || "GENERAL";
 
     // جلب المواد الخاصة بدفعة الطالب وقسمه الهندسي بترتيب الأدمن
     const levelId = user.academicLevelId;
@@ -83,6 +89,7 @@ export async function GET(req: NextRequest) {
         name: user.name,
         email: user.email,
         phone: user.phone,
+        role: user.role,
         academicLevel: user.academicLevel,
         canChangeLevel: user.canChangeLevel,
         department: user.department || null,

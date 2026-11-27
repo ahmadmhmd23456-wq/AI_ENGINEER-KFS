@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
-import { GraduationCap, BookOpen, CreditCard, LogOut, ShieldCheck, Bot } from "lucide-react";
+import { GraduationCap, BookOpen, CreditCard, LogOut, ShieldCheck, Bot, User } from "lucide-react";
 import AiCompanionWidget from "@/components/student/AiCompanionWidget";
 
 export default function StudentLayout({ children }: { children: React.ReactNode }) {
@@ -15,6 +15,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
     { label: "المواد الدراسية", href: "/student/courses", icon: BookOpen },
     { label: "بشمهندس هندكس", href: "/student/ai-companion", icon: Bot },
     { label: "مدفوعاتي واشتراكاتي", href: "/student/purchases", icon: CreditCard },
+    { label: "حسابي", href: "/account", icon: User },
   ];
 
   return (
