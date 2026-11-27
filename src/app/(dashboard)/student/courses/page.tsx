@@ -151,6 +151,10 @@ export default function StudentCoursesPage() {
       title: "جدول المستوى الأول — العمارة الرقمية (الترم الأول)",
       image: "/schedules/architecture-level-1-term-1.jpg",
     },
+    CIVIL: {
+      title: "جدول المستوى الأول — الهندسة الإنشائية / المدنية (الترم الأول)",
+      image: "/schedules/civil-level-1-term-1.jpg",
+    },
   };
 
   const fetchCourses = (deptToFetch?: string) => {
