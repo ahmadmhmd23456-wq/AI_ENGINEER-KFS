@@ -718,6 +718,28 @@ export const AI_LEVEL1_TIMETABLE_TEXT = `جدول طلاب المستوى الأ
   - 11 إلى 12: معمل الأسس الإلكترونية (فصل 1، فصل 2 — معامل كلية الهندسة) | تمرين الأسس الإلكترونية (فصل 3، فصل 4 — معامل كلية الهندسة)
   - 12 إلى 2: تمرين معادلات تفاضلية (فصل 1، فصل 2 — معمل كلية الهندسة) | معمل الأسس الإلكترونية (فصل 3، فصل 4 — معامل كلية الهندسة)`;
 
+export const ARCHITECTURE_LEVEL1_TIMETABLE_IMAGE = "/schedules/architecture-level-1-term-1.jpg";
+export const ARCHITECTURE_LEVEL1_TIMETABLE_TEXT = `جدول طلاب المستوى الأول (أولى) برنامج العمارة الرقمية - الفصل الدراسي الأول (الخريفي 2026/2027):
+• السبت:
+  - 9 إلى 11: محاضرة تصميم معماري (قاعة 414 - كلية الهندسة)
+  - 11 إلى 3: سكشن تصميم معماري (قاعة 414 - كلية الهندسة)
+• الأحد:
+  - 9 إلى 11: محاضرة لغة (قاعة 202 - الجامعة الأهلية)
+  - 11 إلى 1: محاضرة تحليل عددي (قاعة 202 - الجامعة الأهلية)
+  - 1 إلى 3: سكشن تحليل عددي (قاعة 202 - الجامعة الأهلية)
+  - 3 إلى 5: محاضرة أخلاقيات المهنة (قاعة 202 - الجامعة الأهلية)
+• الإثنين:
+  - 9 إلى 11: محاضرة إنشاء معماري (معمل 422 - كلية الهندسة)
+  - 11 إلى 3: سكشن إنشاء معماري (قاعة 402 - كلية الهندسة)
+  - 3 إلى 4: إرشاد أكاديمي (قاعة 402 - كلية الهندسة)
+• الثلاثاء: إجازة
+• الأربعاء: لا توجد محاضرات
+• الخميس:
+  - 9 إلى 11: محاضرة الرسم الرقمي (معمل 405 - كلية الهندسة)
+  - 11 إلى 1: سكشن الرسم الرقمي (معمل 405 - كلية الهندسة)
+  - 1 إلى 3: محاضرة تاريخ العمارة (قاعة 202 - الجامعة الأهلية)
+  - 3 إلى 5: إرشاد أكاديمي (قاعة 202 - الجامعة الأهلية)`;
+
 const AI_LLM_VAULT_ID = "PLATFORM_AI_LLM_VAULT";
 const AI_LLM_SETTING_KEY = "AI_LLM_CONFIG";
 
@@ -1413,9 +1435,15 @@ export async function generateAiCompanionReply(params: {
   );
   const isMechatronicsLevel1 = context.user.department === "MECHATRONICS" && isLevel1;
   const isAiLevel1 = context.user.department === "AI" && isLevel1;
+  const isArchitectureLevel1 = context.user.department === "ARCHITECTURE" && isLevel1;
   const mentionsMechatronics =
     norm.includes("ميكاترونكس") || norm.includes("ميكاترونيكس") || norm.includes("ميكاترونيات");
   const mentionsAi = norm.includes("ذكاء") || norm.includes("الذكاء");
+  const mentionsArchitecture =
+    norm.includes("عماره") ||
+    norm.includes("معماري") ||
+    norm.includes("العماره") ||
+    norm.includes("المعماري");
   const asksAboutSchedule = [
     "جدول",
     "الجدول",
@@ -1428,17 +1456,23 @@ export async function generateAiCompanionReply(params: {
   ].some((k) => norm.includes(k));
 
   const targetSchedule =
-    mentionsMechatronics || (isMechatronicsLevel1 && !mentionsAi)
+    mentionsMechatronics || (isMechatronicsLevel1 && !mentionsAi && !mentionsArchitecture)
       ? {
           image: MECHATRONICS_LEVEL1_TIMETABLE_IMAGE,
           text: MECHATRONICS_LEVEL1_TIMETABLE_TEXT,
           label: "أولى ميكاترونكس",
         }
-      : mentionsAi || (isAiLevel1 && !mentionsMechatronics)
+      : mentionsAi || (isAiLevel1 && !mentionsMechatronics && !mentionsArchitecture)
       ? {
           image: AI_LEVEL1_TIMETABLE_IMAGE,
           text: AI_LEVEL1_TIMETABLE_TEXT,
           label: "أولى ذكاء اصطناعي",
+        }
+      : mentionsArchitecture || (isArchitectureLevel1 && !mentionsMechatronics && !mentionsAi)
+      ? {
+          image: ARCHITECTURE_LEVEL1_TIMETABLE_IMAGE,
+          text: ARCHITECTURE_LEVEL1_TIMETABLE_TEXT,
+          label: "أولى عمارة رقمية",
         }
       : null;
 

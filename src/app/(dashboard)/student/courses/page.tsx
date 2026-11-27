@@ -29,6 +29,7 @@ import {
   Settings2,
   Copy,
   MessageCircle,
+  Calendar,
 } from "lucide-react";
 import {
   playCyberHover,
@@ -135,6 +136,22 @@ export default function StudentCoursesPage() {
   // حالة مودال طلب تفعيل الكورس
   const [selectedSubjectToBuy, setSelectedSubjectToBuy] = useState<any | null>(null);
   const [copiedPhone, setCopiedPhone] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+
+  const LEVEL1_DEPARTMENT_SCHEDULES: Record<string, { title: string; image: string }> = {
+    AI: {
+      title: "جدول المستوى الأول — الذكاء الاصطناعي (الترم الأول)",
+      image: "/schedules/ai-level-1-term-1.jpg",
+    },
+    MECHATRONICS: {
+      title: "جدول المستوى الأول — الميكاترونكس (الترم الأول)",
+      image: "/schedules/mechatronics-level-1-term-1.jpg",
+    },
+    ARCHITECTURE: {
+      title: "جدول المستوى الأول — العمارة الرقمية (الترم الأول)",
+      image: "/schedules/architecture-level-1-term-1.jpg",
+    },
+  };
 
   const fetchCourses = (deptToFetch?: string) => {
     setLoading(true);
@@ -217,6 +234,12 @@ export default function StudentCoursesPage() {
 
   const currentDeptInfo = DEPARTMENTS.find((d) => d.id === selectedDept);
   const isPrepUser = user?.academicLevel?.slug === "prep";
+  const activeDeptSchedule =
+    !isPrepUser &&
+    (!user?.academicLevel?.slug || user.academicLevel.slug === "level-1") &&
+    currentTerm === 1
+      ? LEVEL1_DEPARTMENT_SCHEDULES[selectedDept] || null
+      : null;
 
   return (
     <div className="space-y-6" dir="rtl">
@@ -365,16 +388,32 @@ export default function StudentCoursesPage() {
 
       {/* قائمة المواد للمواد المشتركة وتخصص القسم */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
           <div className="flex items-center gap-2">
             <BookOpen className="w-4 h-4 text-blue-400" />
             <h3 className="text-sm font-bold text-white">
               المقررات الدراسية {currentDeptInfo ? `- قسم ${currentDeptInfo.shortName}` : ""}
             </h3>
           </div>
-          <span className="text-xs text-slate-400 font-mono">
-            {termSubjects.length} مواد متاحة
-          </span>
+          <div className="flex items-center gap-2.5">
+            {activeDeptSchedule && (
+              <button
+                type="button"
+                onClick={() => {
+                  playCyberClick();
+                  setShowScheduleModal(true);
+                }}
+                onMouseEnter={playCyberHover}
+                className="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-[11px] font-bold flex items-center gap-1.5 transition-all"
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>جدول المحاضرات والسكاشن</span>
+              </button>
+            )}
+            <span className="text-xs text-slate-400 font-mono">
+              {termSubjects.length} مواد متاحة
+            </span>
+          </div>
         </div>
 
         {termSubjects.map((sub: any, index: number) => {
@@ -707,6 +746,40 @@ export default function StudentCoursesPage() {
               >
                 إغلاق
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* نافذة عرض جدول القسم الدراسي */}
+      {showScheduleModal && activeDeptSchedule && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setShowScheduleModal(false)}
+        >
+          <div
+            className="bg-slate-900 border border-slate-700 rounded-3xl max-w-4xl w-full p-4 sm:p-6 space-y-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm font-bold text-white">
+                <Calendar className="w-4 h-4 text-amber-400" />
+                <span>{activeDeptSchedule.title}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowScheduleModal(false)}
+                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="rounded-2xl overflow-hidden bg-white border border-slate-700 max-h-[75vh] overflow-y-auto">
+              <img
+                src={activeDeptSchedule.image}
+                alt={activeDeptSchedule.title}
+                className="w-full h-auto object-contain"
+              />
             </div>
           </div>
         </div>
